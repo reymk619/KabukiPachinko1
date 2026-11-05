@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="花之慶次">
+<meta name="theme-color" content="#14070b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>花之慶次 風 小鋼珠（模擬遊戲）</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="startOverlay" class="overlay">
+  <div class="overlay-card">
+    <h1>花之慶次 風<br>小鋼珠</h1>
+    <p class="overlay-note">模擬遊戲，不涉及真實金錢。<br>要聽到音效與BGM，請關閉手機側邊的靜音開關。</p>
+    <button id="startButton" class="primary big">開始遊戲</button>
+  </div>
+</div>
+
+<div id="modal" class="overlay hidden">
+  <div class="overlay-card">
+    <h2 id="modalTitle"></h2>
+    <p id="modalBody" class="modal-body"></p>
+    <button id="modalClose" class="primary">關閉</button>
+  </div>
+</div>
+
+<main class="layout">
+  <section class="machine" aria-label="遊戲機台">
+    <div id="shakeBox" class="shake-box">
+      <canvas id="board" width="520" height="700"></canvas>
+    </div>
+    <div class="strip">
+      <div class="strip-top">
+        <div class="mini"><span>持球</span><b id="trayBalls">0 顆</b></div>
+        <div class="mini"><span>餘額</span><b id="cardBalance">0 円</b></div>
+        <button id="autoButton" class="toggle" aria-pressed="false">自動發射　關</button>
+      </div>
+      <button id="pushButton" class="push" disabled>PUSH（待機中）</button>
+      <div class="power-row">
+        <label for="power" class="power-label">力度</label>
+        <input id="power" type="range" min="0" max="100" value="40" step="1">
+        <span id="powerText" class="power-text">40　左打</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="deck" aria-label="操作面板">
+
+
+    <div class="panel">
+      <div class="row">
+        <div class="chips" role="radiogroup" aria-label="投幣面額">
+          <button class="chip" data-coin="100" role="radio" aria-checked="false">100円</button>
+          <button class="chip selected" data-coin="500" role="radio" aria-checked="true">500円</button>
+          <button class="chip" data-coin="1000" role="radio" aria-checked="false">1000円</button>
+        </div>
+        <button id="coinButton" class="secondary">投幣</button>
+      </div>
+      <div class="row">
+        <button id="rentButton" class="secondary grow">借球　500円→125球</button>
+        <button id="returnButton" class="ghost">退卡</button>
+      </div>
+      <p class="hint">力度：30以下衝不上去，30～54 左打（通常時），55以上 右打（RUSH・大當り中）。</p>
+    </div>
+
+
+
+    <div class="panel">
+      <div class="panel-title">RUSH演出（倒數第二R選擇）</div>
+      <div class="row">
+        <button id="themeKabuki" class="secondary grow" disabled>傾奇RUSH</button>
+        <button id="themeIkki" class="secondary grow" disabled>一騎驅</button>
+      </div>
+    </div>
+
+    <div class="panel status">
+      <div class="panel-title">機台狀態</div>
+      <div id="statusState" class="status-state">通常（左打）</div>
+      <dl class="status-grid">
+        <div><dt>保留</dt><dd id="statusReserve">0/4</dd></div>
+        <div><dt>總轉數</dt><dd id="statusSpins">0</dd></div>
+        <div><dt>大當り次數</dt><dd id="statusHits">0</dd></div>
+        <div><dt>未中轉數</dt><dd id="statusSince">0</dd></div>
+        <div><dt>總投入</dt><dd id="statusInvest">0 円</dd></div>
+        <div><dt>目前收支</dt><dd id="statusProfit">0 円</dd></div>
+      </dl>
+      <p class="hint">保留玉期待度：青0.4%　綠8.6%　松風11.2%　赤53.9%　金84.2%　虎柄確定　天激珠 弱5.2% 強58.3%</p>
+    </div>
+
+    <div class="panel settings">
+      <div class="panel-title">設定</div>
+      <div class="row wrap">
+        <label class="check"><input id="soundCheck" type="checkbox" checked>音效</label>
+        <label class="check"><input id="musicCheck" type="checkbox" checked>BGM</label>
+        <label class="check"><input id="shakeCheck" type="checkbox" checked>畫面震動</label>
+      </div>
+      <div class="row">
+        <label for="musicVolume">BGM音量</label>
+        <input id="musicVolume" type="range" min="0" max="100" value="60" class="grow">
+      </div>
+      <div class="row">
+        <label for="speedSelect">每轉時間</label>
+        <select id="speedSelect" class="grow">
+          <option value="0.35">極速（0.35倍時間）</option>
+          <option value="0.6">快（0.6倍）</option>
+          <option value="1" selected>標準（1倍）</option>
+          <option value="1.5">慢（1.5倍）</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="panel logpanel">
+      <div class="panel-title">記錄</div>
+      <ul id="log" class="log"></ul>
+    </div>
+
+    <p class="footer">模擬遊戲，不涉及真實金錢。電腦版：空白鍵＝自動發射，Enter（可按住）＝PUSH，1／2＝選擇RUSH演出。</p>
+  </section>
+</main>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

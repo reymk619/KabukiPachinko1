@@ -1,0 +1,135 @@
+:root {
+  --lacquer: #14070b;
+  --lacquer-2: #220b12;
+  --crimson: #b3172e;
+  --crimson-deep: #5f0b1a;
+  --gold: #e8b93f;
+  --gold-soft: #f6dc8c;
+  --ink: #f4ebe0;
+  --ink-dim: #b9a9a3;
+  --line: rgba(232, 185, 63, 0.35);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--lacquer); color: var(--ink); }
+body {
+  font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Heiti TC", system-ui, sans-serif;
+  font-size: 15px; line-height: 1.45;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  overscroll-behavior-y: none;
+  padding-top: var(--safe-t);
+}
+button, input, select { font: inherit; color: inherit; touch-action: manipulation; }
+.hidden { display: none !important; }
+
+/* ---------- 版面：手機直式一欄、寬螢幕兩欄 ---------- */
+.layout { max-width: 520px; margin: 0 auto; padding-bottom: calc(24px + var(--safe-b)); }
+.machine { background: #000; }
+.shake-box { will-change: transform; }
+/* 機台依螢幕高度縮放，確保機台與下方的 PUSH／力度同時看得到 */
+#board {
+  display: block; margin: 0 auto; height: auto; aspect-ratio: 520 / 700; touch-action: manipulation;
+  width: min(100%, 520px, calc((100vh - 232px) * 0.7429));
+  width: min(100%, 520px, calc((100dvh - 232px) * 0.7429));
+  min-width: min(100%, 300px);
+}
+.strip { background: linear-gradient(180deg, #2a0a12, var(--lacquer)); border-top: 2px solid var(--gold); padding: 8px 12px calc(8px + var(--safe-b)); display: flex; flex-direction: column; gap: 8px; }
+.strip-top { display: flex; gap: 8px; align-items: stretch; }
+.mini { flex: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.mini span { color: var(--ink-dim); font-size: 11px; line-height: 1.1; }
+.mini b { color: var(--gold); font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.strip .toggle { flex: 1.1; min-height: 40px; padding: 6px 8px; font-size: 14px; }
+.strip .push { min-height: 62px; font-size: 22px; }
+.power-row { display: flex; gap: 8px; align-items: center; }
+.power-label { color: var(--ink-dim); font-size: 13px; }
+.power-row input[type="range"] { flex: 1; height: 30px; }
+.power-row .power-text { min-width: 5.5em; text-align: right; font-size: 13px; }
+.deck { display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 0; }
+@media (min-width: 960px) {
+  .layout { max-width: 1060px; display: grid; grid-template-columns: 520px 1fr; gap: 16px; padding: 14px; align-items: start; }
+  .deck { padding: 0; }
+  .machine { position: sticky; top: 14px; border: 1px solid var(--line); }
+}
+
+/* ---------- 面板 ---------- */
+.panel {
+  background: linear-gradient(180deg, var(--lacquer-2), var(--lacquer));
+  border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.panel-title { font-weight: 700; color: var(--gold-soft); letter-spacing: 0.04em; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row.wrap { flex-wrap: wrap; gap: 8px 18px; }
+.grow { flex: 1; min-width: 0; }
+
+.money { flex-direction: row; gap: 0; padding: 0; overflow: hidden; }
+.readout { flex: 1; padding: 10px 14px; display: flex; flex-direction: column; }
+.readout + .readout { border-left: 1px solid var(--line); }
+.readout-label { color: var(--ink-dim); font-size: 13px; }
+.readout-value { font-size: 26px; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
+
+/* ---------- 按鈕 ---------- */
+button {
+  border: 1px solid var(--line); border-radius: 8px; background: #2d1118; padding: 12px 14px;
+  min-height: 46px; font-weight: 700; cursor: pointer;
+}
+button:active:not(:disabled) { transform: translateY(1px); filter: brightness(1.15); }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.primary { background: linear-gradient(180deg, #d4223c, var(--crimson)); border-color: var(--gold); color: #fff; }
+.primary.big { font-size: 19px; padding: 14px 28px; }
+.secondary { background: #3a1621; border-color: var(--gold); color: var(--gold-soft); }
+.ghost { background: transparent; color: var(--ink-dim); }
+.chips { display: flex; gap: 6px; flex: 1; }
+.chip { flex: 1; padding: 8px 4px; min-height: 42px; background: transparent; color: var(--ink-dim); }
+.chip.selected { background: var(--gold); border-color: var(--gold); color: #2a0a10; }
+.toggle { background: #2d1118; }
+.toggle[aria-pressed="true"] { background: var(--gold); color: #2a0a10; border-color: var(--gold); }
+#themeKabuki.selected, #themeIkki.selected { background: var(--gold); color: #2a0a10; }
+
+/* PUSH：機台上最大的實體按鈕 */
+.push {
+  min-height: 78px; font-size: 24px; letter-spacing: 0.06em; border-radius: 14px;
+  background: radial-gradient(circle at 50% 30%, #4a3a3c, #221719); color: var(--ink-dim);
+  border: 2px solid #5b4a4c; touch-action: none; -webkit-touch-callout: none;
+}
+.push:not(:disabled).ready { background: radial-gradient(circle at 50% 30%, #ffe27a, #d89a12); color: #3a1a00; border-color: #fff1b8; box-shadow: 0 0 22px rgba(255, 210, 80, 0.55); }
+.push:not(:disabled).mash { background: radial-gradient(circle at 50% 30%, #ff6a5c, #b3101f); color: #fff; border-color: #ffc2b8; box-shadow: 0 0 22px rgba(255, 70, 60, 0.6); }
+.push:not(:disabled).rescue { background: radial-gradient(circle at 50% 30%, #ff9a4a, #c24a10); color: #fff; border-color: #ffd2a8; box-shadow: 0 0 22px rgba(255, 130, 50, 0.6); }
+.push:not(:disabled) { animation: pulse 0.5s ease-in-out infinite alternate; }
+@keyframes pulse { from { transform: scale(1); } to { transform: scale(1.025); } }
+@media (prefers-reduced-motion: reduce) { .push:not(:disabled) { animation: none; } }
+
+/* ---------- 力度 ---------- */
+.power-head { display: flex; justify-content: space-between; align-items: baseline; }
+.power-text { color: var(--gold); font-weight: 800; }
+input[type="range"] { width: 100%; height: 34px; accent-color: var(--gold); background: transparent; }
+.zones { display: flex; font-size: 11px; color: var(--ink-dim); margin-top: -6px; }
+.zones span { border-left: 1px solid var(--line); padding-left: 4px; white-space: nowrap; overflow: hidden; }
+
+/* ---------- 狀態 ---------- */
+.status-state { font-size: 17px; font-weight: 800; color: var(--gold); }
+.status-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px 10px; margin: 0; }
+.status-grid dt { color: var(--ink-dim); font-size: 12px; }
+.status-grid dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hint { margin: 0; color: var(--ink-dim); font-size: 12px; }
+
+/* ---------- 設定／記錄 ---------- */
+.check { display: inline-flex; gap: 6px; align-items: center; min-height: 36px; }
+.check input { width: 22px; height: 22px; accent-color: var(--gold); }
+select { background: #2d1118; border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-height: 42px; }
+.log { list-style: none; margin: 0; padding: 0; max-height: 190px; overflow-y: auto; font-size: 13px; color: var(--ink-dim); -webkit-user-select: text; user-select: text; }
+.log li { padding: 3px 0; border-bottom: 1px solid rgba(232, 185, 63, 0.12); }
+.log li:first-child { color: var(--ink); }
+.footer { color: var(--ink-dim); font-size: 12px; margin: 4px 0 0; }
+
+/* ---------- 開始畫面／對話框 ---------- */
+.overlay { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 30%, rgba(120, 10, 30, 0.96), rgba(12, 3, 6, 0.98)); }
+.overlay-card { text-align: center; max-width: 360px; display: flex; flex-direction: column; gap: 18px; align-items: center; }
+.overlay-card h1 { margin: 0; font-size: 40px; line-height: 1.15; color: var(--gold); letter-spacing: 0.08em; text-shadow: 0 2px 0 #5f0b1a, 0 0 24px rgba(232, 185, 63, 0.35); }
+.overlay-card h2 { margin: 0; color: var(--gold); }
+.overlay-note { margin: 0; color: var(--ink-dim); }
+.modal-body { margin: 0; white-space: pre-line; text-align: left; }
+#modal { background: rgba(8, 2, 4, 0.86); }
+#modal .overlay-card { background: var(--lacquer-2); border: 1px solid var(--gold); border-radius: 12px; padding: 20px; }
