@@ -92,7 +92,7 @@ export class SoundEffects {
 
 // 背景音樂：指定現在應該播放的檔案，傳 null 代表停止；檔案相同時不會重新播放
 // iOS 要求播放必須由使用者點擊觸發，所以用「同一個 <audio>」在第一次點擊時先解鎖，之後只換檔案
-const SilentWav = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA=';
+const SilentWav = 'data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
 
 export class BackgroundMusicPlayer {
   constructor(soundEffects) {
@@ -123,9 +123,13 @@ export class BackgroundMusicPlayer {
       this.gainNode = null;
     }
     this.ApplyVolume();
+    // 只為了在使用者點擊時「解鎖」這個 <audio>：播一小段靜音後立刻暫停，不循環（循環播放空檔會讓瀏覽器空轉、整個卡死）
+    audio.loop = false;
     audio.src = SilentWav;
+    const stop = () => { if (this.currentPath === null) { try { audio.pause(); } catch (e) { /* 忽略 */ } } };
     const p = audio.play();
-    if (p && p.catch) p.catch(() => {});
+    if (p && p.then) p.then(stop, () => {});
+    audio.addEventListener('ended', stop, { once: true });
   }
 
   SetVolumePercent(v) {
@@ -150,7 +154,8 @@ export class BackgroundMusicPlayer {
     this.currentPath = path;
     if (!this.audio) return;
     if (path === null) {
-      try { this.audio.pause(); } catch (e) { /* 忽略 */ }
+      // 停止時連同已緩衝的 mp3 一起釋放，不要一直佔著記憶體
+      try { this.audio.pause(); this.audio.removeAttribute('src'); this.audio.load(); } catch (e) { /* 忽略 */ }
       return;
     }
     this.audio.src = path;

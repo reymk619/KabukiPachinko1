@@ -7,7 +7,7 @@ import { SoundEffects, BackgroundMusicPlayer, SoundKind } from './sound.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('board');
-const g = canvas.getContext('2d');
+const g = canvas.getContext('2d', { alpha: false });
 const BoardWidth = 520, BoardHeight = 700;
 
 const engine = new GameEngine();
@@ -33,6 +33,7 @@ let shakeFramesRemaining = 0;
 let shakeStrength = 0;
 let displayFrame = 0;
 let shakeEnabled = true;
+let started = false; // 按下「開始遊戲」之前不跑遊戲迴圈，避免背景白白耗電
 
 // ---- 小工具 ----
 const yen = (n) => `${n.toLocaleString('en-US')} 円`;
@@ -109,7 +110,8 @@ function updateShake() {
   if (shakeFramesRemaining <= 0) return;
   shakeFramesRemaining--;
   const box = $('shakeBox');
-  if (shakeFramesRemaining === 0) { box.style.transform = ''; shakeStrength = 0; return; }
+  if (shakeFramesRemaining === 0) { box.style.transform = ''; box.style.willChange = ''; shakeStrength = 0; return; }
+  box.style.willChange = 'transform';
   const s = shakeStrength * 0.6;
   box.style.transform = `translate(${((Math.random() * 2 - 1) * s).toFixed(1)}px, ${((Math.random() * 2 - 1) * s).toFixed(1)}px)`;
 }
@@ -223,14 +225,15 @@ function updateDisplay() {
 
 // ---- 繪製：盤面＋液晶 ----
 function setupCanvas() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(BoardWidth * dpr);
   canvas.height = Math.round(BoardHeight * dpr);
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  boardView.BuildStaticLayer(dpr);
 }
-function render() {
+function render(alpha = 1) {
   g.save();
-  boardView.Draw(g);
+  boardView.Draw(g, alpha);
   g.translate(GameSettings.ScreenRectangle.x, GameSettings.ScreenRectangle.y);
   screenView.Draw(g);
   g.restore();
@@ -250,15 +253,24 @@ function tick() {
   updatePushButton();
 }
 const StepMs = 1000 / 60;
+// 容許的時間誤差：60Hz 螢幕每幀的間隔會有些微抖動，沒有容許的話會偶爾「這幀不動、下幀動兩步」造成抖動
+const StepTolerance = 2;
 let lastTime = performance.now();
 let accumulator = 0;
+const perf = { frames: 0, ticks: 0, zeroStepFrames: 0, multiStepFrames: 0 };
 function frame(now) {
+  if (!started) { lastTime = now; accumulator = 0; requestAnimationFrame(frame); return; }
   accumulator += Math.min(now - lastTime, 250);
   lastTime = now;
   let steps = 0;
-  while (accumulator >= StepMs && steps < 5) { tick(); accumulator -= StepMs; steps++; }
+  while (accumulator >= StepMs - StepTolerance && steps < 5) { tick(); accumulator -= StepMs; steps++; }
   if (steps >= 5) accumulator = 0;
-  if (steps > 0) render();
+  if (accumulator < 0) accumulator = 0;
+  perf.frames++; perf.ticks += steps;
+  if (steps === 0) perf.zeroStepFrames++;
+  if (steps > 1) perf.multiStepFrames++;
+  // 每個畫面更新都繪製一次，小鋼珠位置依「距離下一次邏輯更新的時間比例」內插，高更新率螢幕也順
+  render(Math.min(1, accumulator / StepMs));
   requestAnimationFrame(frame);
 }
 
@@ -329,6 +341,7 @@ function bindControls() {
 
   // 開始遊戲：iOS 要求音訊必須由點擊啟動
   $('startButton').addEventListener('click', () => {
+    started = true;
     sound.Unlock();
     music.Init();
     $('startOverlay').classList.add('hidden');
@@ -367,4 +380,4 @@ render();
 requestAnimationFrame(frame);
 
 // 除錯用：在瀏覽器主控台輸入 hanakei.engine 可以看到內部狀態
-window.hanakei = { engine, physics, screenView, GameSettings };
+window.hanakei = { engine, physics, screenView, boardView, GameSettings, g, perf, music, sound };
