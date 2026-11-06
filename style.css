@@ -26,7 +26,7 @@ button, input, select { font: inherit; color: inherit; touch-action: manipulatio
 /* ---------- 版面：手機直式一欄、寬螢幕兩欄 ---------- */
 .layout { max-width: 520px; margin: 0 auto; padding-bottom: calc(24px + var(--safe-b)); }
 .machine { background: #000; }
-.shake-box { will-change: transform; }
+.shake-box { }
 /* 機台依螢幕高度縮放，確保機台與下方的 PUSH／力度同時看得到 */
 #board {
   display: block; margin: 0 auto; height: auto; aspect-ratio: 520 / 700; touch-action: manipulation;
