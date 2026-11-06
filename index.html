@@ -20,6 +20,7 @@
     <h1>花之慶次 風<br>小鋼珠</h1>
     <p class="overlay-note">模擬遊戲，不涉及真實金錢。<br>要聽到音效與BGM，請關閉手機側邊的靜音開關。</p>
     <button id="startButton" class="primary big">開始遊戲</button>
+    <p id="startError" class="overlay-note error-note" role="alert" hidden></p>
   </div>
 </div>
 
@@ -125,6 +126,15 @@
   </section>
 </main>
 
+<script>
+// 程式載入失敗時（例如 js 資料夾裡的檔案有些是舊版、有些是新版），直接在開始畫面顯示原因
+window.addEventListener('error', function (e) {
+  var box = document.getElementById('startError');
+  if (!box) return;
+  box.hidden = false;
+  box.textContent = '載入失敗：' + (e.message || '未知錯誤') + '。請確認 js 資料夾裡的檔案都已更新成同一版，再用無痕分頁重新開啟。';
+});
+</script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
