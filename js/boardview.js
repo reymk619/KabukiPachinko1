@@ -19,14 +19,31 @@ export class BoardView {
     this.physics = physics;
   }
 
-  Draw(g) {
+  // 不會動的部分（機台底色、盤面、釘子、導軌、外框）先畫成一張圖，之後每幀只要貼上去，大幅降低 CPU／GPU 負擔
+  BuildStaticLayer(dpr) {
+    if (typeof document === 'undefined') return;
+    const c = document.createElement('canvas');
+    c.width = Math.round(BoardWidth * dpr);
+    c.height = Math.round(BoardHeight * dpr);
+    const sg = c.getContext('2d');
+    sg.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.DrawStatic(sg);
+    this.staticCanvas = c;
+  }
+
+  DrawStatic(g) {
     this.DrawCabinetBackground(g);
     this.DrawField(g);
     this.DrawRailsAndPegs(g);
-    this.DrawTargets(g);
     this.DrawCabinetFront(g);
     this.DrawLaunchRail(g);
-    this.DrawBalls(g);
+  }
+
+  Draw(g, alpha = 1) {
+    if (this.staticCanvas) g.drawImage(this.staticCanvas, 0, 0, BoardWidth, BoardHeight);
+    else this.DrawStatic(g);
+    this.DrawTargets(g);
+    this.DrawBalls(g, alpha);
   }
 
   // 建立遊技盤的外形（上方兩個大圓角、下方開口讓珠子掉出去）
@@ -182,12 +199,17 @@ export class BoardView {
   }
 
   // 繪製所有小鋼珠
-  DrawBalls(g) {
+  DrawBalls(g, alpha = 1) {
     for (const b of this.physics.balls) {
+      // 在「上一幀」與「這一幀」的位置之間內插（相差太遠代表瞬間移動，就不內插）
+      const jump = Math.abs(b.PositionX - b.PrevX) + Math.abs(b.PositionY - b.PrevY);
+      const t = jump > 40 ? 1 : alpha;
+      const x = b.PrevX + (b.PositionX - b.PrevX) * t;
+      const y = b.PrevY + (b.PositionY - b.PrevY) * t;
       g.fillStyle = 'silver';
-      g.beginPath(); g.arc(b.PositionX, b.PositionY, BallRadius, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(x, y, BallRadius, 0, Math.PI * 2); g.fill();
       g.fillStyle = 'white';
-      g.beginPath(); g.arc(b.PositionX - 0.5, b.PositionY - 1.5, 1.5, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(x - 0.5, y - 1.5, 1.5, 0, Math.PI * 2); g.fill();
     }
   }
 }

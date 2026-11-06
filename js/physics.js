@@ -43,7 +43,7 @@ export class BoardPhysics {
   // 發射一顆小鋼珠，power為0到100：30以下衝不上去，30到54左打，55以上右打
   LaunchBall(power) {
     const ball = {
-      PositionX: LaunchStartX, PositionY: LaunchStartY, VelocityX: 0, VelocityY: 0, Mode: BallMode.Rail,
+      PositionX: LaunchStartX, PositionY: LaunchStartY, PrevX: LaunchStartX, PrevY: LaunchStartY, VelocityX: 0, VelocityY: 0, Mode: BallMode.Rail,
       RailDistance: 0, IsReturning: false, RailLimit: 0, ExitDistance: 0, ExitX: 0, ExitY: 0, ExitVelocityX: 0, ExitVelocityY: 0,
       AgeFrames: 0, StallCount: 0, LastCheckX: 0, LastCheckY: 0, IsRemoved: false,
     };
@@ -59,6 +59,8 @@ export class BoardPhysics {
     this.UpdateHitEffects();
     for (let i = 0; i < this.balls.length; i++) {
       const ball = this.balls[i];
+      ball.PrevX = ball.PositionX;
+      ball.PrevY = ball.PositionY;
       this.AdvanceBall(ball, 0.5);
       if (!ball.IsRemoved) this.AdvanceBall(ball, 0.5);
       if (!ball.IsRemoved) this.CheckStall(ball);
