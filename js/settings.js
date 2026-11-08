@@ -99,9 +99,9 @@ export const GameSettings = {
   FreeSpinSpinFrames: 70,
   FreeSpinStopFrames: 40,
   // 各階段幀數（約60幀為1秒）
-  NormalSpinFrames: 300,
-  NormalReachExtraFrames: 240,
-  RushQuickSpinFrames: 80,
+  NormalSpinFrames: 80,
+  NormalReachExtraFrames: 300,
+  RushQuickSpinFrames: 70,
   RushSpinFrames: 130,
   ResultStopFrames: 60,
   FlipResultStopFrames: 180,
