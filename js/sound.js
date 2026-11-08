@@ -3,6 +3,7 @@ export const SoundKind = {
   StartIn: 'StartIn', ElectricIn: 'ElectricIn', AttackerIn: 'AttackerIn', Reach: 'Reach', Push: 'Push', HitFanfare: 'HitFanfare',
   SevenFlip: 'SevenFlip', GateBreak: 'GateBreak', ModeUp: 'ModeUp', StrongOmen: 'StrongOmen', Mash: 'Mash',
   FreeSpinOmen: 'FreeSpinOmen', FreeSpinStop: 'FreeSpinStop',
+  ReserveChange: 'ReserveChange', NeedleDrop: 'NeedleDrop', NeedleHit: 'NeedleHit', NeedleBounce: 'NeedleBounce',
 };
 
 const SampleRate = 22050;
@@ -23,6 +24,11 @@ const Definitions = {
   // 花的預告：柔和的三聲上行鈴音；再回轉每次停止的短音
   [SoundKind.FreeSpinOmen]: [tone(988, 988, 110, 0.35), tone(1319, 1319, 110, 0.35), tone(1568, 1568, 300, 0.4)],
   [SoundKind.FreeSpinStop]: [tone(660, 520, 130, 0.3)],
+  // 保留變色：三聲上行；針降下：由高往低的細音；針戳中：清脆兩聲；針被彈開：低沉下滑
+  [SoundKind.ReserveChange]: [tone(880, 880, 70, 0.3), tone(1175, 1175, 70, 0.3), tone(1568, 1568, 160, 0.35)],
+  [SoundKind.NeedleDrop]: [tone(2400, 1200, 160, 0.22)],
+  [SoundKind.NeedleHit]: [tone(2093, 2093, 45, 0.4), tone(2637, 2637, 200, 0.4)],
+  [SoundKind.NeedleBounce]: [tone(1500, 400, 170, 0.3)],
   // 連打時每按一下的短音
   [SoundKind.Mash]: [tone(1200, 1500, 45, 0.3)],
   [SoundKind.ModeUp]: [tone(784, 784, 100, 0.45), tone(988, 988, 100, 0.45), tone(1175, 1175, 100, 0.45), tone(1568, 1568, 300, 0.45)],

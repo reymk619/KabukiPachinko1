@@ -13,7 +13,11 @@ export const GameEffect = {
   Reach: 'Reach', GateArrive: 'GateArrive', PushPressed: 'PushPressed', PushHit: 'PushHit', HitReveal: 'HitReveal',
   GateBreak: 'GateBreak', SevenFlip: 'SevenFlip', ModeUp: 'ModeUp', ThemeChoiceOpen: 'ThemeChoiceOpen', StrongOmen: 'StrongOmen',
   MashPress: 'MashPress', FreeSpinOmen: 'FreeSpinOmen', FreeSpinStop: 'FreeSpinStop',
+  ReserveChange: 'ReserveChange', NeedleDrop: 'NeedleDrop', NeedleHit: 'NeedleHit', NeedleBounce: 'NeedleBounce',
 };
+// 保留玉可升格的顏色順序（白→青→綠→赤→金→虎柄），天激珠與松風不在這個順序裡，不會變化
+const ReserveLadder = [ReserveColor.White, ReserveColor.Blue, ReserveColor.Green, ReserveColor.Red, ReserveColor.Gold, ReserveColor.Tiger];
+const ReserveColorNames = { [ReserveColor.Blue]: '青', [ReserveColor.Green]: '綠', [ReserveColor.Red]: '赤', [ReserveColor.Gold]: '金', [ReserveColor.Tiger]: '虎柄' };
 // 城門結果：沒到達、被突破、到達但沒突破
 export const GateOutcome = { None: 'None', Broken: 'Broken', Held: 'Held' };
 // 開獎時的變換演出
@@ -29,6 +33,13 @@ export class GameEngine {
   constructor(random) {
     this.rng = random || Math.random;
     this.reservePlans = [];
+    this.isNeedlePlanned = false;
+    this.needleStartFrame = 0;
+    this.CurrentSpinColor = ReserveColor.White;
+    this.IsNeedleActive = false;
+    this.NeedleSlot = 0;
+    this.NeedleFrame = 0;
+    this.NeedleWillUpgrade = false;
     this.hitOriginMode = GameMode.Normal;
     this.nextMode = GameMode.Normal;
     this.isChanceUpPushPlanned = false;
@@ -119,7 +130,12 @@ export class GameEngine {
     if (this.Mode === GameMode.Normal || this.IsHitInProgress) return false;
     return !(this.Mode === GameMode.KabukiBurst && this.RemainingRushSpins <= 0);
   }
-  GetReserveColor(index) { return this.reservePlans[index].Color; }
+  // 畫面上顯示的顏色（通常時可能比最終顏色低，之後逐步升格）
+  GetReserveColor(index) { return this.reservePlans[index].DisplayColor; }
+  GetReservePreviousColor(index) { return this.reservePlans[index].PreviousColor; }
+  GetReserveFlashFrames(index) { return this.reservePlans[index].FlashFrames; }
+  // 目前變動中的保留玉（畫面上最左邊的大顆）
+  get IsCurrentSpinBallVisible() { return this.Phase === GamePhase.Spinning || this.Phase === GamePhase.ResultStop; }
   GetThemeName() { return this.SelectedTheme === RushTheme.KabukiRush ? '傾奇RUSH（漢の喧嘩）' : '一騎驅Mode（傾奇者戀歌）'; }
   GetModeName() {
     switch (this.Mode) {
@@ -138,6 +154,10 @@ export class GameEngine {
   // ---- 每一幀推進一次遊戲狀態 ----
   Tick() {
     this.PhaseFrame++;
+    for (const plan of this.reservePlans) {
+      if (plan.FlashFrames > 0) plan.FlashFrames--;
+    }
+    this.UpdateNeedle();
     if (this.PushPromptRemainingFrames > 0) {
       this.PushPromptRemainingFrames--;
       if (this.PushPromptRemainingFrames === 0) this.ResolvePush(true);
@@ -291,16 +311,116 @@ export class GameEngine {
   TryAddReserve() {
     if (this.reservePlans.length >= GameSettings.ReserveMaximum) return false;
     if (this.Mode === GameMode.KabukiBurst && this.RemainingRushSpins <= 0) return false;
-    this.reservePlans.push(this.CreatePlan());
+    this.reservePlans.push(this.CreatePlan(this.reservePlans.length + 1));
     return true;
   }
 
-  CreatePlan() {
-    const plan = { IsHit: false, IsRushClass: this.IsRushActive, Color: ReserveColor.White };
+  // slot是這個保留進來時排在第幾個位置（從1開始），決定還能不能趕上第3、第2個位置的變化
+  CreatePlan(slot) {
+    const plan = {
+      IsHit: false, IsRushClass: this.IsRushActive,
+      Color: ReserveColor.White,         // 抽中的最終顏色：開始變動時的顏色，期待度以它為準
+      DisplayColor: ReserveColor.White,  // 目前畫面上顯示的顏色
+      PreviousColor: ReserveColor.White, // 變色前的顏色（閃爍用）
+      FlashFrames: 0,
+      ChangeSlots: [],                   // 還沒發生的變化：保留移動到第幾個位置時變色（3或2）
+    };
     const hitProbability = plan.IsRushClass ? GameSettings.RushHitProbability : GameSettings.NormalHitProbability;
     plan.IsHit = this.nextDouble() < hitProbability;
     plan.Color = this.PickReserveColor(plan.IsHit, hitProbability);
+    plan.DisplayColor = plan.Color;
+    plan.PreviousColor = plan.Color;
+    if (!plan.IsRushClass) this.PlanReserveChanges(plan, slot);
     return plan;
+  }
+
+  // 決定這個保留在等待的過程中會不會變色：先抽好最終顏色，再往回退一到兩階當作一開始顯示的顏色
+  PlanReserveChanges(plan, slot) {
+    const level = ReserveLadder.indexOf(plan.Color);
+    if (level <= 0) return;
+    const availableSlots = [3, 2].filter((s) => s < slot);
+    const maxChanges = Math.min(2, Math.min(level, availableSlots.length));
+    if (maxChanges <= 0 || this.nextDouble() >= GameSettings.ReserveChangeProbability) return;
+    const changeCount = (maxChanges === 2 && this.nextDouble() < GameSettings.ReserveDoubleChangeProbability) ? 2 : 1;
+    if (changeCount === 2) plan.ChangeSlots.push(...availableSlots);
+    else plan.ChangeSlots.push(availableSlots[this.nextInt(availableSlots.length)]);
+    plan.DisplayColor = ReserveLadder[level - changeCount];
+    plan.PreviousColor = plan.DisplayColor;
+  }
+
+  // 保留玉升格一階，閃爍提示
+  UpgradeReserve(plan) {
+    const level = ReserveLadder.indexOf(plan.DisplayColor);
+    if (level < 0 || level >= ReserveLadder.length - 1) return;
+    plan.PreviousColor = plan.DisplayColor;
+    plan.DisplayColor = ReserveLadder[level + 1];
+    plan.FlashFrames = GameSettings.ReserveFlashFrames;
+    this.RaiseMessage(`保留變化！${this.GetReserveColorName(plan.PreviousColor)}→${this.GetReserveColorName(plan.DisplayColor)}`);
+    this.RaiseEffect(GameEffect.ReserveChange);
+  }
+
+  GetReserveColorName(color) { return ReserveColorNames[color] || '白'; }
+
+  // 開始變動時：保留玉往前移一格，移動到第3、第2個位置的保留玉依計畫變色
+  ApplyReserveSlotChanges() {
+    for (let i = 0; i < this.reservePlans.length; i++) {
+      const slot = i + 1;
+      const plan = this.reservePlans[i];
+      const index = plan.ChangeSlots.indexOf(slot);
+      if (index >= 0) {
+        plan.ChangeSlots.splice(index, 1);
+        this.UpgradeReserve(plan);
+      }
+    }
+  }
+
+  // 決定這一轉有沒有針演出：只有通常時，針會降下來戳一顆保留玉，戳中有機會升格，也可能被彈開
+  PlanNeedle() {
+    this.isNeedlePlanned = false;
+    this.IsNeedleActive = false;
+    if (this.Mode !== GameMode.Normal || this.reservePlans.length === 0) return;
+    // 找出還有變化可以升格的保留，有的話針比較容易出現，沒有的話針出現了也一定會被彈開
+    const upgradable = [];
+    this.reservePlans.forEach((plan, i) => { if (plan.ChangeSlots.length > 0) upgradable.push(i); });
+    const needleProbability = upgradable.length > 0 ? GameSettings.NeedleProbabilityWithChange : GameSettings.NeedleProbabilityWithoutChange;
+    if (this.nextDouble() >= needleProbability) return;
+    let target;
+    if (upgradable.length > 0 && this.nextDouble() < GameSettings.NeedleTargetUpgradableProbability) target = upgradable[this.nextInt(upgradable.length)];
+    else target = this.nextInt(this.reservePlans.length);
+    this.NeedleSlot = target;
+    this.NeedleWillUpgrade = this.reservePlans[target].ChangeSlots.length > 0 && this.nextDouble() < GameSettings.NeedleSuccessProbability;
+    this.isNeedlePlanned = true;
+    this.needleStartFrame = Math.floor(this.SpinTotalFrames * 20 / 100);
+  }
+
+  // 每一幀推進針演出：降下 → 戳到保留玉 → 升格或被彈開
+  UpdateNeedle() {
+    if (this.isNeedlePlanned && !this.IsNeedleActive && this.Phase === GamePhase.Spinning && this.PhaseFrame >= this.needleStartFrame) {
+      this.IsNeedleActive = true;
+      this.NeedleFrame = 0;
+      this.RaiseMessage('針降下來了……');
+      this.RaiseEffect(GameEffect.NeedleDrop);
+    }
+    if (!this.IsNeedleActive) return;
+    this.NeedleFrame++;
+    if (this.NeedleFrame === GameSettings.NeedleDescendFrames) {
+      const canUpgrade = this.NeedleWillUpgrade && this.NeedleSlot < this.reservePlans.length && this.reservePlans[this.NeedleSlot].ChangeSlots.length > 0;
+      this.NeedleWillUpgrade = canUpgrade;
+      if (canUpgrade) {
+        // 戳中：提前用掉下一個預定的變化
+        const plan = this.reservePlans[this.NeedleSlot];
+        plan.ChangeSlots.shift();
+        this.RaiseEffect(GameEffect.NeedleHit);
+        this.UpgradeReserve(plan);
+      } else {
+        this.RaiseMessage('針被彈開了……');
+        this.RaiseEffect(GameEffect.NeedleBounce);
+      }
+    }
+    if (this.NeedleFrame >= GameSettings.NeedleDescendFrames + GameSettings.NeedleResultFrames) {
+      this.IsNeedleActive = false;
+      this.isNeedlePlanned = false;
+    }
   }
 
   // 沒中獎時各顏色的比例由期待度反推，讓顏色出現後的實際中獎率等於設定的期待度
@@ -329,14 +449,15 @@ export class GameEngine {
   // 狀態改變後，把機率類別不同的保留重新抽選
   RerollReserves() {
     for (let i = 0; i < this.reservePlans.length; i++) {
-      if (this.reservePlans[i].IsRushClass !== this.IsRushActive) this.reservePlans[i] = this.CreatePlan();
+      if (this.reservePlans[i].IsRushClass !== this.IsRushActive) this.reservePlans[i] = this.CreatePlan(i + 1);
     }
   }
 
   // ---- 變動 ----
   StartSpin() {
     let plan = this.reservePlans.shift();
-    if (plan.IsRushClass !== this.IsRushActive) plan = this.CreatePlan();
+    if (plan.IsRushClass !== this.IsRushActive) plan = this.CreatePlan(0);
+    this.CurrentSpinColor = plan.Color;
     this.TotalSpinCount++;
     this.SpinsSinceLastHit++;
     if (this.IsRushActive) this.ModeSpinCount++;
@@ -344,6 +465,8 @@ export class GameEngine {
     this.IsCurrentSpinHit = plan.IsHit;
     this.DecideSpinDetails();
     this.ChangePhase(GamePhase.Spinning);
+    this.ApplyReserveSlotChanges();
+    this.PlanNeedle();
     if (this.IsStrongOmen) {
       this.RaiseMessage('電子音預告！強期待度！');
       this.RaiseEffect(GameEffect.StrongOmen);

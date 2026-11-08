@@ -15,10 +15,17 @@
 - iPhone 要聽到聲音，請先關閉側邊的靜音開關。
 - 第一次進入要按「開始遊戲」，這是 iOS 啟動音訊的必要步驟。
 
+## 單機版同步的功能
+- 液晶改成橢圓形，打到上方天釘的珠子會順著橢圓滾下來（導軌座標在 `js/layout.js` 最前面64筆）。
+- 保留玉改放在轉動畫面下方，最左邊的大顆是目前變動中的保留。
+- 通常時保留玉可能變色（白→青→綠→赤，最多兩次），變色時會閃爍；變動途中也可能有針降下來戳保留玉，戳中可能升格、也可能被彈開。
+- 始動口兩側有擋牆，只有從上方開口掉進去的珠子才算入賞（距離在 `js/settings.js` 的 `StartChuckerWallOffset`）。
+
 ## 調整數值
 - `js/settings.js`：大當り機率、轉動時間、各種預告機率、賞球數等。
 - `js/layout.js`：釘子與導軌座標（`Pegs`、`FunnelPegs`、`RailData`）。
 - 命釘開口：`js/settings.js` 的 `LifeNailHalfGap`。
+- 保留變化與針演出的機率：`js/settings.js` 的 `ReserveChangeProbability`、`NeedleProbabilityWithChange` 等。
 
 ## 檔案
 ```

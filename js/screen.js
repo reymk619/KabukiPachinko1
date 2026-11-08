@@ -5,7 +5,7 @@ import { GamePhase, GameMode, RushTheme, GateOutcome, FlipKind, PushPromptKind, 
 const FontFamily = '"Microsoft JhengHei","PingFang TC","Noto Sans TC","Heiti TC",sans-serif';
 const font = (pt) => `bold ${(pt * 4 / 3).toFixed(1)}px ${FontFamily}`;
 const Fonts = {
-  figure: font(44), compactFigure: font(22), hit: font(24), banner: font(20),
+  figure: font(44), compactFigure: font(22), hit: font(24), banner: font(18),
   info: font(11), small: font(9), mark: font(7), flower: font(96), watermark: font(50),
 };
 
@@ -61,7 +61,7 @@ export class ScreenView {
   Draw(g) {
     const e = this.engine;
     g.save();
-    g.beginPath(); g.rect(0, 0, this.Width, this.Height); g.clip();
+    g.beginPath(); g.ellipse(this.Width / 2, this.Height / 2, this.Width / 2, this.Height / 2, 0, 0, Math.PI * 2); g.clip();
     const isRushScene = e.IsRushActive && !e.IsHitInProgress;
     this.DrawBackground(g);
     if (isRushScene) {
@@ -78,13 +78,14 @@ export class ScreenView {
       if (isRushScene) this.DrawRushBanner(g);
       else this.DrawNormalBanner(g);
     }
+    this.DrawNeedle(g);
     this.DrawPushPrompt(g);
     this.DrawStrongOmen(g);
     this.DrawFlowerWatermark(g);
     this.DrawThemeChoicePrompt(g);
     this.DrawFlipFlash(g);
     g.restore();
-    this.strokeRect(g, 'gold', 1, 0.5, 0.5, this.Width - 1, this.Height - 1);
+    this.strokeEllipse(g, 'gold', 5, 2.5, 2.5, this.Width - 5, this.Height - 5);
   }
 
   // 依狀態取得背景漸層顏色
@@ -165,25 +166,24 @@ export class ScreenView {
   // 城門到達演出：騎馬衝向城門，突破時城門爆開，沒突破時城門搖晃
   DrawGateScene(g) {
     const e = this.engine;
-    const gateLeft = this.Width - 84;
+    const gateLeft = this.Width - 96;
     const isBroken = e.Phase === GamePhase.ResultStop && e.CurrentGateOutcome === GateOutcome.Broken;
     const isHeld = e.Phase === GamePhase.ResultStop && e.CurrentGateOutcome === GateOutcome.Held;
     const shake = isHeld ? Math.sin(this.animationFrame * 0.8) * 2 : 0;
-    this.line(g, 'saddlebrown', 1, 0, 190, this.Width, 190);
+    this.line(g, 'saddlebrown', 1, 0, 150, this.Width, 150);
     if (!isBroken) {
-      this.fillRect(g, 'rgba(70,35,25,0.82)', gateLeft + shake, 100, 70, 86);
-      this.strokeRect(g, 'gold', 1, gateLeft + shake, 100, 70, 86);
-      this.line(g, 'gold', 1, gateLeft + 35 + shake, 100, gateLeft + 35 + shake, 186);
+      this.fillRect(g, 'rgba(70,35,25,0.82)', gateLeft + shake, 72, 62, 78);
+      this.strokeRect(g, 'gold', 1, gateLeft + shake, 72, 62, 78);
+      this.line(g, 'gold', 1, gateLeft + 31 + shake, 72, gateLeft + 31 + shake, 150);
     }
     g.fillStyle = 'rgba(140,20,20,0.9)';
-    g.beginPath(); g.moveTo(gateLeft - 12, 102); g.lineTo(gateLeft + 35, 74); g.lineTo(gateLeft + 82, 102); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(gateLeft - 10, 76); g.lineTo(gateLeft + 31, 52); g.lineTo(gateLeft + 72, 76); g.closePath(); g.fill();
     const progress = this.GetHorseProgress();
-    const horseX = 10 + progress * (gateLeft - 100);
-    this.DrawHorseRider(g, horseX, 172);
+    this.DrawHorseRider(g, 10 + progress * (gateLeft - 100), 134);
     if (isBroken) {
       for (let i = 0; i < 12; i++) {
-        const a = i * Math.PI / 6 + this.animationFrame * 0.05;
-        this.line(g, 'yellow', 3, gateLeft + 35, 145, gateLeft + 35 + Math.cos(a) * 55, 145 + Math.sin(a) * 55);
+        const a2 = i * Math.PI / 6 + this.animationFrame * 0.05;
+        this.line(g, 'yellow', 3, gateLeft + 31, 111, gateLeft + 31 + Math.cos(a2) * 50, 111 + Math.sin(a2) * 50);
       }
     }
   }
@@ -230,18 +230,56 @@ export class ScreenView {
       title = e.GetModeName();
       detail = `經過 ${e.ModeSpinCount} 轉　連莊 ${e.RushChainCount}`;
     }
-    this.drawString(g, title, Fonts.info, 'white', 8, 6);
-    if (isRushScene) this.drawString(g, detail, Fonts.small, 'white', 8, 26);
+    this.drawCentered(g, title, Fonts.info, 'white', { x: 0, y: isRushScene ? 10 : 14, w: this.Width, h: 22 });
+    if (isRushScene) this.drawCentered(g, detail, Fonts.small, 'white', { x: 0, y: 30, w: this.Width, h: 14 });
   }
 
-  // 繪製保留玉，顏色與圖案代表期待度（參考真・花の慶次3）
+  GetReserveBallRectangle(i) { return { x: 134 + i * 26, y: 166, w: 18, h: 18 }; }
+  DrawBallGlow(g, r, color, alpha) { this.fillEllipse(g, color, r.x - 4, r.y - 4, r.w + 8, r.h + 8); }
   DrawReserveBalls(g, isRushScene) {
     const e = this.engine;
-    const ballY = isRushScene ? 46 : 34;
+    const cur = { x: 100, y: 162, w: 26, h: 26 };
+    if (e.IsCurrentSpinBallVisible) {
+      this.DrawBallGlow(g, cur, 'rgba(255,255,255,0.35)', 90);
+      this.DrawReserveBall(g, e.CurrentSpinColor, cur);
+    }
+    this.strokeEllipse(g, 'white', 1, cur.x, cur.y, cur.w, cur.h);
     for (let i = 0; i < GameSettings.ReserveMaximum; i++) {
-      const r = { x: 10 + i * 22, y: ballY, w: 18, h: 18 };
-      if (i < e.ReserveCount) this.DrawReserveBall(g, e.GetReserveColor(i), r);
+      const r = this.GetReserveBallRectangle(i);
+      if (i < e.ReserveCount) {
+        let shown = e.GetReserveColor(i);
+        const flash = e.GetReserveFlashFrames(i);
+        if (flash > 0) {
+          if (Math.floor(flash / 4) % 2 === 1) shown = e.GetReservePreviousColor(i);
+          this.DrawBallGlow(g, r, 'rgba(255,215,0,0.6)', 150);
+        }
+        this.DrawReserveBall(g, shown, r);
+      }
       this.strokeEllipse(g, 'white', 1, r.x, r.y, r.w, r.h);
+    }
+  }
+
+  DrawNeedle(g) {
+    const e = this.engine;
+    if (!e.IsNeedleActive) return;
+    const t = this.GetReserveBallRectangle(e.NeedleSlot);
+    const tx = t.x + t.w / 2, frame = e.NeedleFrame, d = GameSettings.NeedleDescendFrames;
+    const restY = t.y - 2, startY = t.y - 60;
+    let tipY;
+    if (frame < d) { const p = frame / d; tipY = startY + (restY - startY) * p * p; }
+    else if (e.NeedleWillUpgrade) tipY = restY;
+    else { const b = Math.min(1, (frame - d) / 14); tipY = restY - (restY - startY) * 0.6 * b; }
+    // 深色描邊 + 白色針身，在淺色背景上也看得清楚
+    this.line(g, 'rgba(40,40,60,0.85)', 5, tx, tipY - 46, tx, tipY);
+    this.line(g, 'white', 2.5, tx, tipY - 46, tx, tipY);
+    g.beginPath(); g.moveTo(tx - 4, tipY); g.lineTo(tx + 4, tipY); g.lineTo(tx, tipY + 10); g.closePath();
+    g.fillStyle = 'white'; g.fill(); g.strokeStyle = 'rgba(40,40,60,0.85)'; g.lineWidth = 1.5; g.stroke();
+    const since = frame - d;
+    if (since < 0) return;
+    if (e.NeedleWillUpgrade) this.DrawBallGlow(g, t, 'rgba(255,215,0,0.63)', 160);
+    if (since < 12) for (let i = 0; i < 6; i++) {
+      const a = i * Math.PI / 3, inner = 6 + since, outer = inner + 6;
+      this.line(g, e.NeedleWillUpgrade ? 'gold' : 'white', 2, tx + Math.cos(a) * inner, t.y + Math.sin(a) * inner, tx + Math.cos(a) * outer, t.y + Math.sin(a) * outer);
     }
   }
 
@@ -260,19 +298,20 @@ export class ScreenView {
     }
     this.fillEllipse(g, base, r.x, r.y, r.w, r.h);
     if (color === ReserveColor.Tiger) {
-      this.line(g, 'black', 2, r.x + 4, r.y + 7, r.x + 10, r.y + 3);
-      this.line(g, 'black', 2, r.x + 8, r.y + 15, r.x + 15, r.y + 8);
-      this.line(g, 'black', 2, r.x + 3, r.y + 13, r.x + 7, r.y + 10);
+      const sc = r.w / 18;
+      this.line(g, 'black', 2, r.x + 4 * sc, r.y + 7 * sc, r.x + 10 * sc, r.y + 3 * sc);
+      this.line(g, 'black', 2, r.x + 8 * sc, r.y + 15 * sc, r.x + 15 * sc, r.y + 8 * sc);
+      this.line(g, 'black', 2, r.x + 3 * sc, r.y + 13 * sc, r.x + 7 * sc, r.y + 10 * sc);
     }
     if (mark !== null) this.drawCentered(g, mark, Fonts.mark, markColor, r);
-    else this.fillEllipse(g, 'white', r.x + 4, r.y + 3, 4, 4);
+    else this.fillEllipse(g, 'white', r.x + 4 * (r.w / 18), r.y + 3 * (r.w / 18), 4 * (r.w / 18), 4 * (r.w / 18));
   }
 
   // 繪製三個數字轉輪（1到8），RUSH中縮小放在右上角
   DrawReels(g, isCompact) {
     const e = this.engine;
     for (let i = 0; i < 3; i++) {
-      const r = isCompact ? { x: 172 + i * 52, y: 4, w: 48, h: 48 } : { x: 27 + i * 96, y: 62, w: 84, h: 96 };
+      const r = isCompact ? { x: 95 + i * 48, y: 46, w: 44, h: 38 } : { x: 36 + i * 90, y: 64, w: 78, h: 92 };
       const figure = this.GetDisplayedFigure(i);
       const isSeven = figure === GameSettings.SevenFigureIndex;
       this.fillRect(g, 'rgba(255,255,255,0.863)', r.x, r.y, r.w, r.h);
@@ -303,7 +342,7 @@ export class ScreenView {
   // 通常時下方的文字：リーチ、Push激アツ、開獎結果
   DrawNormalBanner(g) {
     const e = this.engine;
-    const r = { x: 0, y: 160, w: this.Width, h: 38 };
+    const r = { x: 0, y: 36, w: this.Width, h: 26 };
     if (e.IsFreeSpinRunning) {
       if (!e.IsFlowerShown && e.PushPrompt === PushPromptKind.None) this.drawCentered(g, '免費回轉', Fonts.banner, 'hotpink', r);
       return;
@@ -322,7 +361,7 @@ export class ScreenView {
   // RUSH中上方的文字：城門到達、突破結果、復活結果
   DrawRushBanner(g) {
     const e = this.engine;
-    const r = { x: 0, y: 58, w: this.Width, h: 32 };
+    const r = { x: 0, y: 88, w: this.Width, h: 28 };
     if (e.Phase === GamePhase.Spinning) {
       const arrived = e.CurrentGateOutcome !== GateOutcome.None && e.PhaseFrame >= Math.floor(e.SpinTotalFrames * 85 / 100);
       if (arrived && Math.floor(this.animationFrame / 6) % 2 === 0) this.drawCentered(g, '城門到達!!', Fonts.banner, 'yellow', r);
@@ -378,25 +417,25 @@ export class ScreenView {
     if (e.PushPrompt === PushPromptKind.None) return;
     const flashing = Math.floor(this.animationFrame / 6) % 2 === 0;
     if (e.PushPrompt === PushPromptKind.ChanceUp || e.PushPrompt === PushPromptKind.FreeSpinPush) {
-      const r = { x: 50, y: 160, w: 230, h: 34 };
+      const r = { x: 50, y: 36, w: 230, h: 28 };
       this.fillRect(g, 'rgba(0,0,0,0.784)', r.x, r.y, r.w, r.h);
       this.drawCentered(g, 'PUSH!!', Fonts.banner, flashing ? 'gold' : 'white', r);
       return;
     }
     if (e.PushPrompt === PushPromptKind.DropMash) {
-      this.fillRect(g, 'rgba(0,0,0,0.804)', 25, 94, 280, 94);
-      this.drawCentered(g, '紅軍撤退就轉落！', Fonts.info, 'white', { x: 25, y: 96, w: 280, h: 22 });
-      this.drawCentered(g, '連打 PUSH!!（可按住）', Fonts.banner, flashing ? 'yellow' : 'orangered', { x: 25, y: 118, w: 280, h: 34 });
-      const bar = { x: 45, y: 160, w: 240, h: 18 };
+      this.fillRect(g, 'rgba(0,0,0,0.804)', 35, 88, 260, 74);
+      this.drawCentered(g, '紅軍撤退就轉落！可按住PUSH', Fonts.info, 'white', { x: 35, y: 90, w: 260, h: 20 });
+      this.drawCentered(g, '連打 PUSH!!', Fonts.banner, flashing ? 'yellow' : 'orangered', { x: 35, y: 110, w: 260, h: 28 });
+      const bar = { x: 55, y: 142, w: 220, h: 14 };
       this.fillRect(g, 'dimgray', bar.x, bar.y, bar.w, bar.h);
       const fillWidth = Math.trunc(bar.w * e.MashProgress);
       if (fillWidth > 0) this.fillRect(g, e.MashProgress >= 0.7 ? 'gold' : 'orangered', bar.x, bar.y, fillWidth, bar.h);
       this.strokeRect(g, 'white', 1, bar.x, bar.y, bar.w, bar.h);
       return;
     }
-    this.fillRect(g, 'rgba(0,0,0,0.784)', 25, 96, 280, 64);
-    this.drawCentered(g, '城門突破ならず…', Fonts.info, 'white', { x: 25, y: 98, w: 280, h: 24 });
-    this.drawCentered(g, '大戰按鈕!!', Fonts.banner, flashing ? 'yellow' : 'orangered', { x: 25, y: 122, w: 280, h: 34 });
+    this.fillRect(g, 'rgba(0,0,0,0.784)', 40, 84, 250, 66);
+    this.drawCentered(g, '城門突破ならず…', Fonts.info, 'white', { x: 40, y: 86, w: 250, h: 22 });
+    this.drawCentered(g, '大戰按鈕!! [Enter]', Fonts.banner, flashing ? 'yellow' : 'orangered', { x: 40, y: 108, w: 250, h: 34 });
   }
 
   // 花的浮水印：閃一下後淡出消失
@@ -414,7 +453,7 @@ export class ScreenView {
   DrawStrongOmen(g) {
     const e = this.engine;
     if (!e.IsStrongOmen || e.Phase !== GamePhase.Spinning || e.PhaseFrame > 90 || Math.floor(this.animationFrame / 4) % 2 !== 0) return;
-    const r = { x: 6, y: 6, w: 160, h: 30 };
+    const r = { x: 85, y: 16, w: 160, h: 26 };
     this.fillRect(g, 'rgba(0,0,0,0.784)', r.x, r.y, r.w, r.h);
     this.drawCentered(g, '電子音預告!!', Fonts.banner, 'red', r);
   }
@@ -423,7 +462,7 @@ export class ScreenView {
   DrawThemeChoicePrompt(g) {
     const e = this.engine;
     if (!e.IsThemeChoiceOpen) return;
-    const r = { x: 35, y: 170, w: 260, h: 26 };
+    const r = { x: 35, y: 136, w: 260, h: 22 };
     this.fillRect(g, 'rgba(0,0,0,0.843)', r.x, r.y, r.w, r.h);
     const flashing = Math.floor(this.animationFrame / 8) % 2 === 0;
     this.drawCentered(g, 'RUSH演出：請選擇 傾奇／一騎驅', Fonts.small, flashing ? 'gold' : 'white', r);
@@ -433,10 +472,10 @@ export class ScreenView {
   DrawHitLayer(g) {
     const e = this.engine;
     const headline = e.IsCurrentSpinBurstHit ? '傾奇御免BONUS!!' : '大當り!!';
-    this.drawCentered(g, headline, Fonts.hit, 'white', { x: 0, y: 50, w: this.Width, h: 50 });
+    this.drawCentered(g, headline, Fonts.hit, 'white', { x: 0, y: 36, w: this.Width, h: 46 });
     const detail = e.Phase === GamePhase.HitOpening ? '慶次參上！' : `ROUND ${e.CurrentRound}/${e.TotalRounds}　入賞 ${e.AttackerCount}/${GameSettings.AttackerMaximumCount}`;
-    this.drawCentered(g, detail, Fonts.info, 'white', { x: 0, y: 110, w: this.Width, h: 28 });
+    this.drawCentered(g, detail, Fonts.info, 'white', { x: 0, y: 84, w: this.Width, h: 24 });
     const guide = e.IsCurrentSpinBurstHit ? '結束後進入 傾奇BURST！請右打' : '請把力度調到右打區間';
-    this.drawCentered(g, guide, Fonts.info, 'yellow', { x: 0, y: 145, w: this.Width, h: 28 });
+    this.drawCentered(g, guide, Fonts.info, 'yellow', { x: 0, y: 108, w: this.Width, h: 24 });
   }
 }

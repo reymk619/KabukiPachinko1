@@ -43,7 +43,7 @@ export class BoardPhysics {
   // 發射一顆小鋼珠，power為0到100：30以下衝不上去，30到54左打，55以上右打
   LaunchBall(power) {
     const ball = {
-      PositionX: LaunchStartX, PositionY: LaunchStartY, PrevX: LaunchStartX, PrevY: LaunchStartY, VelocityX: 0, VelocityY: 0, Mode: BallMode.Rail,
+      PositionX: LaunchStartX, PositionY: LaunchStartY, PrevX: LaunchStartX, PrevY: LaunchStartY, PrevSubY: LaunchStartY, VelocityX: 0, VelocityY: 0, Mode: BallMode.Rail,
       RailDistance: 0, IsReturning: false, RailLimit: 0, ExitDistance: 0, ExitX: 0, ExitY: 0, ExitVelocityX: 0, ExitVelocityY: 0,
       AgeFrames: 0, StallCount: 0, LastCheckX: 0, LastCheckY: 0, IsRemoved: false,
     };
@@ -76,6 +76,18 @@ export class BoardPhysics {
     this.lifeNails.push({ x: chuckerCenterX + GameSettings.LifeNailHalfGap, y: 474 });
     for (const n of this.lifeNails) this.obstacleCircles.push(n);
     for (const r of RailData) this.rails.push({ StartX: r[0], StartY: r[1], EndX: r[2], EndY: r[3], IsRoof: r[4] > 0.5 });
+    this.AddStartChuckerWalls();
+  }
+
+  // 始動口兩側的擋牆：珠子只能從上方的開口掉進去，不能從側面直接撞進去
+  AddStartChuckerWalls() {
+    const r = StartChuckerRect;
+    const wallTop = r.y - 8;
+    const wallBottom = r.y + r.h + 2;
+    const leftX = r.x - GameSettings.StartChuckerWallOffset;
+    const rightX = r.x + r.w + GameSettings.StartChuckerWallOffset;
+    this.rails.push({ StartX: leftX, StartY: wallTop, EndX: leftX, EndY: wallBottom, IsRoof: false });
+    this.rails.push({ StartX: rightX, StartY: wallTop, EndX: rightX, EndY: wallBottom, IsRoof: false });
   }
 
   // 依力度決定小鋼珠沿外圈導軌跑多遠才進盤面
@@ -151,6 +163,7 @@ export class BoardPhysics {
 
   // 小鋼珠在盤面內的運動
   AdvanceBallInField(ball, stepScale) {
+    ball.PrevSubY = ball.PositionY; // 這一小步移動之前的Y，用來判斷珠子是從上方還是側面進入始動口
     this.ApplyAttraction(ball);
     ball.VelocityY += Gravity * stepScale;
     this.LimitSpeed(ball);
@@ -272,7 +285,8 @@ export class BoardPhysics {
     let payout = 0;
     let kind = TargetKind.StartChucker;
     let flashKey = 'start';
-    if (contains(StartChuckerRect)) {
+    // 始動口只算從上方開口掉進去的珠子，從側面碰進來的不算
+    if (contains(StartChuckerRect) && ball.PrevSubY < StartChuckerRect.y) {
       payout = this.engine.NotifyStartChuckerHit();
     } else if (this.engine.IsElectricChuckerOpen && contains(ElectricChuckerRect)) {
       payout = this.engine.NotifyElectricChuckerHit();

@@ -93,6 +93,10 @@ function onEffect(effect) {
     case GameEffect.GateBreak: sound.Play(SoundKind.GateBreak); startShake(30, 10); break;
     case GameEffect.SevenFlip: sound.Play(SoundKind.SevenFlip); startShake(45, 14); break;
     case GameEffect.ModeUp: sound.Play(SoundKind.ModeUp); break;
+    case GameEffect.ReserveChange: sound.Play(SoundKind.ReserveChange); break;
+    case GameEffect.NeedleDrop: sound.Play(SoundKind.NeedleDrop); break;
+    case GameEffect.NeedleHit: sound.Play(SoundKind.NeedleHit); break;
+    case GameEffect.NeedleBounce: sound.Play(SoundKind.NeedleBounce); break;
     case GameEffect.FreeSpinOmen: sound.Play(SoundKind.FreeSpinOmen); break;
     case GameEffect.FreeSpinStop: sound.Play(SoundKind.FreeSpinStop); break;
     case GameEffect.StrongOmen: sound.Play(SoundKind.StrongOmen); break;

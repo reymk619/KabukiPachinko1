@@ -32,6 +32,21 @@ export const GameSettings = {
   ChanceUpHotOnHit: 0.85,
   ChanceUpHotOnMiss: 0.20,
   // 強期待度電子音預告：中獎時出現的機率，以及出現後的目標期待度
+  // 保留變化（通常時）：保留玉在輪到之前，移動到第3、第2個位置時可能升格顏色（白→青→綠→赤），最多變化兩次
+  // 變化的保留最後停在抽中的顏色，所以顏色的期待度不受影響
+  ReserveChangeProbability: 0.60,
+  ReserveDoubleChangeProbability: 0.35,
+  ReserveFlashFrames: 90,
+  // 針演出（通常時）：從上方降下一根針戳保留玉，戳中有機會升格顏色，也可能被彈開
+  // 有保留還能升格時每一轉出現針的機率；沒有的話針出現了也一定會被彈開，所以機率很低
+  NeedleProbabilityWithChange: 0.50,
+  NeedleProbabilityWithoutChange: 0.004,
+  NeedleTargetUpgradableProbability: 0.85,
+  NeedleSuccessProbability: 0.70,
+  NeedleDescendFrames: 30,
+  NeedleResultFrames: 45,
+  // 始動口兩側擋牆離入口邊緣的距離（0到7.5之間，越小越貼近入口、可通過的寬度越窄）
+  StartChuckerWallOffset: 4.5,
   StrongOmenOnHit: 0.35,
   StrongOmenReliability: 0.75,
   // 一騎驅Mode：戰モード、大戰モード轉落時出現「敵軍急襲」連打演出，連打成功（進度條跳滿）就拉回城門突破
