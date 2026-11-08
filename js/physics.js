@@ -19,7 +19,7 @@ const RingRadius = 125, QuarterArcLength = 196.35, TopStraightLength = 225;
 const RailSpeedPerStep = 8, WeakPowerLimit = 30, RightHitPowerStart = 55;
 
 // 入賞口的位置（x, y, 寬, 高）
-export const StartChuckerRect = { x: 205, y: 500, w: 30, h: 16 };
+export const StartChuckerRect = { x: 205, y: 500, w: 25, h: 16 };
 export const ElectricChuckerRect = { x: 430, y: 410, w: 22, h: 14 };
 export const AttackerRect = { x: 395, y: 470, w: 64, h: 18 };
 
