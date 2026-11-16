@@ -110,6 +110,21 @@ export class BoardView {
     this.DrawTarget(g, AttackerRect, '大入賞口', e.IsAttackerOpen, 'orangered', 'attacker');
   }
 
+  // 無珠模式：盤面上顯示提示文字（沒有珠子，自動運轉）
+  DrawBalllessLabel(g) {
+    if (!this.engine.IsBalllessMode) return;
+    g.fillStyle = 'rgba(20,10,30,0.59)';
+    g.fillRect(80, 418, 170, 46);
+    g.strokeStyle = 'gold';
+    g.lineWidth = 1;
+    g.strokeRect(80, 418, 170, 46);
+    g.font = `bold ${(15 * 4 / 3).toFixed(1)}px ${FontFamily}`;
+    g.fillStyle = 'white';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('無珠模式', 165, 442);
+  }
+
   // 繪製單一入賞口，開啟時發亮
   DrawTarget(g, r, label, isOpen, openColor, flashKey) {
     let fill = isOpen ? openColor : 'rgb(60,60,60)';

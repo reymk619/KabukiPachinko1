@@ -1,5 +1,5 @@
 import { GameSettings } from './settings.js';
-import { GamePhase, GameMode, RushTheme, GateOutcome, FlipKind, PushPromptKind, ReserveColor } from './engine.js';
+import { GamePhase, GameMode, RushTheme, GateOutcome, FlipKind, PushPromptKind, ReserveColor, PremiumSignalKind } from './engine.js';
 
 // 字型：pt 換成 px（96 DPI），優先使用 iOS / 各平台內建的繁中字型
 const FontFamily = '"Microsoft JhengHei","PingFang TC","Noto Sans TC","Heiti TC",sans-serif';
@@ -81,6 +81,7 @@ export class ScreenView {
     this.DrawNeedle(g);
     this.DrawPushPrompt(g);
     this.DrawStrongOmen(g);
+    this.DrawPremiumSignal(g);
     this.DrawFlowerWatermark(g);
     this.DrawThemeChoicePrompt(g);
     this.DrawFlipFlash(g);
@@ -222,7 +223,7 @@ export class ScreenView {
     const e = this.engine;
     let title, detail = '';
     if (e.IsHitInProgress) title = '花の慶次';
-    else if (e.Mode === GameMode.Normal) title = '花の慶次　通常 1/399.9';
+    else if (e.Mode === GameMode.Normal) title = `花の慶次　通常 1/${(1 / GameSettings.NormalHitProbability).toFixed(1)}`;
     else if (e.Mode === GameMode.KabukiBurst) {
       title = '傾奇BURST';
       detail = `残り ${e.RemainingRushSpins} 轉　連莊 ${e.RushChainCount}`;
@@ -283,7 +284,7 @@ export class ScreenView {
     }
   }
 
-  // 單顆保留玉：青、綠、赤、金是單色，虎柄有條紋，天激珠有「天」字，松風有「松」字
+  // 單顆保留玉：青、綠、赤、金是單色，虹是彩虹漸層，傾奇者保留有「傾」字
   DrawReserveBall(g, color, r) {
     let base = 'white', mark = null, markColor = 'white';
     switch (color) {
@@ -291,17 +292,20 @@ export class ScreenView {
       case ReserveColor.Green: base = 'limegreen'; break;
       case ReserveColor.Red: base = 'red'; break;
       case ReserveColor.Gold: base = 'gold'; break;
-      case ReserveColor.Tiger: base = 'orange'; break;
-      case ReserveColor.HeavenWeak: base = 'rgb(190,235,255)'; mark = '天'; markColor = 'midnightblue'; break;
-      case ReserveColor.HeavenStrong: base = 'rgb(200,60,220)'; mark = '天'; markColor = 'gold'; break;
-      case ReserveColor.Matsukaze: base = 'rgb(150,90,40)'; mark = '松'; markColor = 'white'; break;
+      case ReserveColor.Rainbow: base = 'violet'; break;
+      case ReserveColor.KeijiSpecial: base = 'rgb(170,20,30)'; mark = '傾'; markColor = 'gold'; break;
     }
-    this.fillEllipse(g, base, r.x, r.y, r.w, r.h);
-    if (color === ReserveColor.Tiger) {
-      const sc = r.w / 18;
-      this.line(g, 'black', 2, r.x + 4 * sc, r.y + 7 * sc, r.x + 10 * sc, r.y + 3 * sc);
-      this.line(g, 'black', 2, r.x + 8 * sc, r.y + 15 * sc, r.x + 15 * sc, r.y + 8 * sc);
-      this.line(g, 'black', 2, r.x + 3 * sc, r.y + 13 * sc, r.x + 7 * sc, r.y + 10 * sc);
+    if (color === ReserveColor.Rainbow) {
+      // 虹保留：彩虹漸層蓋過原本的底色
+      const grad = g.createLinearGradient(r.x, r.y, r.x + r.w, r.y + r.h);
+      const stops = ['red', 'orange', 'gold', 'limegreen', 'deepskyblue', 'mediumpurple'];
+      stops.forEach((c, i) => grad.addColorStop(i / (stops.length - 1), c));
+      g.fillStyle = grad;
+      g.beginPath();
+      g.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w / 2, r.h / 2, 0, 0, Math.PI * 2);
+      g.fill();
+    } else {
+      this.fillEllipse(g, base, r.x, r.y, r.w, r.h);
     }
     if (mark !== null) this.drawCentered(g, mark, Fonts.mark, markColor, r);
     else this.fillEllipse(g, 'white', r.x + 4 * (r.w / 18), r.y + 3 * (r.w / 18), 4 * (r.w / 18), 4 * (r.w / 18));
@@ -355,7 +359,10 @@ export class ScreenView {
       return;
     }
     const reachVisible = e.IsCurrentSpinReach && e.PhaseFrame >= this.GetReelStopFrame(2);
-    if (reachVisible && Math.floor(this.animationFrame / 8) % 2 === 0) this.drawCentered(g, 'リーチ!!', Fonts.banner, 'yellow', r);
+    if (reachVisible && Math.floor(this.animationFrame / 8) % 2 === 0) {
+      const reachText = e.ReachKindName || 'リーチ!!';
+      this.drawCentered(g, reachText, e.ReachKindName ? Fonts.small : Fonts.banner, 'yellow', r);
+    }
   }
 
   // RUSH中上方的文字：城門到達、突破結果、復活結果
@@ -390,13 +397,13 @@ export class ScreenView {
     const e = this.engine;
     let text, color = 'gold';
     if (e.CurrentFlipKind === FlipKind.None) {
-      text = e.IsCurrentSpinBurstHit ? '傾奇御免BONUS!!' : '大當り!!';
+      text = e.IsCurrentSpinBurstHit ? '傾奇御免BONUS!!' : '御免BONUS!!';
     } else if (e.PhaseFrame < e.FlipEventFrame) {
       text = 'チェンジ…？'; color = 'white';
     } else if (e.IsFlipDone) {
       text = '七七七!! 傾奇御免'; color = 'red';
     } else {
-      text = '大當り!!（沒有換）';
+      text = '御免BONUS!!（沒有換七七七）';
     }
     this.drawCentered(g, text, Fonts.banner, color, r);
   }
@@ -458,6 +465,27 @@ export class ScreenView {
     this.drawCentered(g, '電子音預告!!', Fonts.banner, 'red', r);
   }
 
+  // プレミアム演出（最強信號）：只要出現就是真的，文字直接講白結果
+  DrawPremiumSignal(g) {
+    const e = this.engine;
+    if (e.CurrentPremiumSignal === PremiumSignalKind.None || e.Phase !== GamePhase.Spinning) return;
+    const texts = {
+      [PremiumSignalKind.ScreenBlackout]: '画面電断！！傾奇BURST突入確定',
+      [PremiumSignalKind.RainbowLogo]: '虹色標題LOGO！大當確定',
+      [PremiumSignalKind.MatsukazeAppear]: '松風登場！大戰モード升格確定',
+      [PremiumSignalKind.KeijiAlign]: '傾奇者圖柄完全對齊！LT確定',
+      [PremiumSignalKind.KiseruMax]: '煙管極大演出！RUSH再連確定',
+    };
+    if (e.CurrentPremiumSignal === PremiumSignalKind.ScreenBlackout && e.PhaseFrame < 90) {
+      // 畫面電斷：液晶先全黑，2~3秒後才出現文字
+      if (e.PhaseFrame < 60) { this.fillRect(g, 'black', 0, 0, this.Width, this.Height); return; }
+    }
+    if (e.PhaseFrame > 110 || Math.floor(this.animationFrame / 4) % 2 !== 0) return;
+    const r = { x: 30, y: 16, w: 270, h: 26 };
+    this.fillRect(g, 'rgba(0,0,0,0.82)', r.x, r.y, r.w, r.h);
+    this.drawCentered(g, texts[e.CurrentPremiumSignal], Fonts.small, 'gold', r);
+  }
+
   // 大當り倒數第二R的RUSH演出選擇提示
   DrawThemeChoicePrompt(g) {
     const e = this.engine;
@@ -471,11 +499,14 @@ export class ScreenView {
   // 繪製大當り中畫面
   DrawHitLayer(g) {
     const e = this.engine;
-    const headline = e.IsCurrentSpinBurstHit ? '傾奇御免BONUS!!' : '大當り!!';
+    const headline = e.IsCurrentSpinBurstHit ? '傾奇御免BONUS!!' : '御免BONUS!!';
     this.drawCentered(g, headline, Fonts.hit, 'white', { x: 0, y: 36, w: this.Width, h: 46 });
-    const detail = e.Phase === GamePhase.HitOpening ? '慶次參上！' : `ROUND ${e.CurrentRound}/${e.TotalRounds}　入賞 ${e.AttackerCount}/${GameSettings.AttackerMaximumCount}`;
+    const detail = e.Phase === GamePhase.HitOpening ? '慶次參上！'
+      : e.IsBalllessMode ? `ROUND ${e.CurrentRound}/${e.TotalRounds}　本次得分 ${e.HitScore.toLocaleString('en-US')} 珠`
+      : `ROUND ${e.CurrentRound}/${e.TotalRounds}　入賞 ${e.AttackerCount}/${GameSettings.AttackerMaximumCount}`;
     this.drawCentered(g, detail, Fonts.info, 'white', { x: 0, y: 84, w: this.Width, h: 24 });
-    const guide = e.IsCurrentSpinBurstHit ? '結束後進入 傾奇BURST！請右打' : '請把力度調到右打區間';
+    const guide = e.IsBalllessMode ? (e.IsCurrentSpinBurstHit ? '結束後進入 傾奇BURST！' : '無珠模式：自動計分中')
+      : (e.IsCurrentSpinBurstHit ? '結束後進入 傾奇BURST！請右打' : '請把力度調到右打區間');
     this.drawCentered(g, guide, Fonts.info, 'yellow', { x: 0, y: 108, w: this.Width, h: 24 });
   }
 }

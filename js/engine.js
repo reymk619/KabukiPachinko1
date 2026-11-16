@@ -7,7 +7,10 @@ export const RushTheme = { KabukiRush: 'KabukiRush', IkkiKake: 'IkkiKake' };
 // 遊戲狀態：通常、戰モード、大戰モード、傾奇BURST
 export const GameMode = { Normal: 'Normal', SenMode: 'SenMode', DaiSenMode: 'DaiSenMode', KabukiBurst: 'KabukiBurst' };
 // 保留玉的種類（索引對應 ReserveColorReliabilities 的 i+1）
-export const ReserveColor = { White: 0, Blue: 1, Green: 2, Red: 3, Gold: 4, Tiger: 5, HeavenWeak: 6, HeavenStrong: 7, Matsukaze: 8 };
+// 保留玉的種類：白、青(7%)、綠(18%)、赤(50%)、金(80%)、虹(確定)、傾奇者保留(特殊,88%)
+export const ReserveColor = { White: 0, Blue: 1, Green: 2, Red: 3, Gold: 4, Rainbow: 5, KeijiSpecial: 6 };
+// プレミアム演出（最強信號），出現時一定是真的
+export const PremiumSignalKind = { None: 'None', ScreenBlackout: 'ScreenBlackout', RainbowLogo: 'RainbowLogo', MatsukazeAppear: 'MatsukazeAppear', KeijiAlign: 'KeijiAlign', KiseruMax: 'KiseruMax' };
 // 演出事件（畫面與音效使用）
 export const GameEffect = {
   Reach: 'Reach', GateArrive: 'GateArrive', PushPressed: 'PushPressed', PushHit: 'PushHit', HitReveal: 'HitReveal',
@@ -15,9 +18,9 @@ export const GameEffect = {
   MashPress: 'MashPress', FreeSpinOmen: 'FreeSpinOmen', FreeSpinStop: 'FreeSpinStop',
   ReserveChange: 'ReserveChange', NeedleDrop: 'NeedleDrop', NeedleHit: 'NeedleHit', NeedleBounce: 'NeedleBounce',
 };
-// 保留玉可升格的顏色順序（白→青→綠→赤→金→虎柄），天激珠與松風不在這個順序裡，不會變化
-const ReserveLadder = [ReserveColor.White, ReserveColor.Blue, ReserveColor.Green, ReserveColor.Red, ReserveColor.Gold, ReserveColor.Tiger];
-const ReserveColorNames = { [ReserveColor.Blue]: '青', [ReserveColor.Green]: '綠', [ReserveColor.Red]: '赤', [ReserveColor.Gold]: '金', [ReserveColor.Tiger]: '虎柄' };
+// 保留玉可升格的顏色順序（白→青→綠→赤→金→虹），傾奇者保留不在這個順序裡，不會變化
+const ReserveLadder = [ReserveColor.White, ReserveColor.Blue, ReserveColor.Green, ReserveColor.Red, ReserveColor.Gold, ReserveColor.Rainbow];
+const ReserveColorNames = { [ReserveColor.Blue]: '青', [ReserveColor.Green]: '綠', [ReserveColor.Red]: '赤', [ReserveColor.Gold]: '金', [ReserveColor.Rainbow]: '虹', [ReserveColor.KeijiSpecial]: '傾奇者' };
 // 城門結果：沒到達、被突破、到達但沒突破
 export const GateOutcome = { None: 'None', Broken: 'Broken', Held: 'Held' };
 // 開獎時的變換演出
@@ -35,11 +38,31 @@ export class GameEngine {
     this.reservePlans = [];
     this.isNeedlePlanned = false;
     this.needleStartFrame = 0;
+    // 傾奇者充能：戰モード、大戰モード每次大當り累積，充滿後下一次大當保證直接升格傾奇BURST
+    this.KabukiCharge = 0;
+    // 這一轉是否為LT（Lucky Trigger），通常時和一般大當判定各自獨立抽選
+    this.IsLuckyTrigger = false;
+    // 這一轉顯示的SP Reach／角色Reach名稱，沒有特別命名的リーチ則是null
+    this.ReachKindName = null;
+    // 這一轉顯示的プレミアム演出（最強信號），None代表沒有
+    this.CurrentPremiumSignal = PremiumSignalKind.None;
+    // 戰モード大當り時，這次是否會突破到大戰モード（先抽好，讓プレミアム演出不會騙人）
+    this.willBreakToDaiSen = false;
+    // 無珠模式：跳分跳了5次後要停頓的剩餘幀數
+    this.balllessPauseFramesRemaining = 0;
     this.CurrentSpinColor = ReserveColor.White;
     this.IsNeedleActive = false;
     this.NeedleSlot = 0;
     this.NeedleFrame = 0;
     this.NeedleWillUpgrade = false;
+    // 無珠模式：不用發射珠子，大當り的每一R自動入賞並計分
+    this.IsBalllessMode = false;
+    // 暫停：true時不會開始新的變動（進行中的變動與大當り會繼續跑完）
+    this.IsSpinStartBlocked = false;
+    // 這次大當り到目前為止得到的無珠分數（珠）
+    this.HitScore = 0;
+    this.balllessFillCounter = 0;
+    this.onScore = null; // (balls) => void：大當り每打完一R得到的分數
     this.hitOriginMode = GameMode.Normal;
     this.nextMode = GameMode.Normal;
     this.isChanceUpPushPlanned = false;
@@ -177,7 +200,7 @@ export class GameEngine {
     }
     switch (this.Phase) {
       case GamePhase.Idle:
-        if (this.reservePlans.length > 0) this.StartSpin();
+        if (this.reservePlans.length > 0 && !this.IsSpinStartBlocked) this.StartSpin();
         break;
       case GamePhase.Spinning:
         if (this.PhaseFrame === Math.floor(this.SpinTotalFrames * 60 / 100) && this.IsCurrentSpinReach && !this.IsRushActive) {
@@ -203,12 +226,29 @@ export class GameEngine {
         if (this.PhaseFrame >= GameSettings.HitOpeningFrames) this.BeginRound();
         break;
       case GamePhase.RoundOpen:
+        // 無珠模式：大入賞口自動一顆一顆入賞（每跳一次+15珠），跳滿5次停1秒再繼續跳；倒數第二R放慢，留時間選RUSH演出
+        if (this.IsBalllessMode && this.AttackerCount < GameSettings.AttackerMaximumCount) {
+          if (this.balllessPauseFramesRemaining > 0) {
+            this.balllessPauseFramesRemaining--;
+          } else {
+            this.balllessFillCounter++;
+            const fillInterval = this.IsThemeChoiceOpen ? GameSettings.BalllessThemeChoiceFillFrames : GameSettings.BalllessFillFrames;
+            if (this.balllessFillCounter >= fillInterval) {
+              this.balllessFillCounter = 0;
+              this.AttackerCount++;
+              this.AwardBalllessJumpScore();
+              if (this.AttackerCount === GameSettings.BalllessJumpsPerPause && this.AttackerCount < GameSettings.AttackerMaximumCount) {
+                this.balllessPauseFramesRemaining = GameSettings.BalllessPauseFrames;
+              }
+            }
+          }
+        }
         if (this.AttackerCount >= GameSettings.AttackerMaximumCount || this.PhaseFrame >= GameSettings.AttackerTimeoutFrames) {
           this.ChangePhase(GamePhase.RoundInterval);
         }
         break;
       case GamePhase.RoundInterval:
-        if (this.PhaseFrame >= GameSettings.RoundIntervalFrames) {
+        if (this.PhaseFrame >= (this.IsBalllessMode ? GameSettings.BalllessRoundIntervalFrames : GameSettings.RoundIntervalFrames)) {
           if (this.CurrentRound < this.TotalRounds) this.BeginRound();
           else this.FinishHit();
         }
@@ -305,6 +345,15 @@ export class GameEngine {
   NotifyAttackerHit() {
     if (this.AttackerCount < GameSettings.AttackerMaximumCount) this.AttackerCount++;
     return GameSettings.PayoutAttacker;
+  }
+
+  // 無珠模式：自動補一個保留，成功回傳true（保留已滿或BURST已結束會失敗）
+  AddBalllessReserve() { return this.TryAddReserve(); }
+
+  // 無珠模式：打完一R，加上這一R的得分
+  AwardBalllessJumpScore() {
+    this.HitScore += GameSettings.BalllessScorePerJump;
+    if (this.onScore) this.onScore(GameSettings.BalllessScorePerJump);
   }
 
   // ---- 保留 ----
@@ -471,6 +520,10 @@ export class GameEngine {
       this.RaiseMessage('電子音預告！強期待度！');
       this.RaiseEffect(GameEffect.StrongOmen);
     }
+    if (this.CurrentPremiumSignal !== PremiumSignalKind.None) {
+      this.RaiseMessage('プレミアム演出発生！' + this.CurrentPremiumSignal);
+      this.RaiseEffect(GameEffect.StrongOmen);
+    }
   }
 
   DecideSpinDetails() {
@@ -494,6 +547,15 @@ export class GameEngine {
     this.MashProgress = 0;
     this.MashPressCount = 0;
     this.IsStrongOmen = false;
+    this.ReachKindName = null;
+    this.CurrentPremiumSignal = PremiumSignalKind.None;
+    this.willBreakToDaiSen = false;
+    // LT（Lucky Trigger）：只有通常時才會抽，和上面的IsCurrentSpinHit各自獨立
+    this.IsLuckyTrigger = false;
+    if (!this.IsRushActive && this.nextDouble() < GameSettings.NormalLuckyTriggerProbability) {
+      this.IsLuckyTrigger = true;
+      this.IsCurrentSpinHit = true;
+    }
     this.willGateRescueSucceed = this.nextDouble() < GameSettings.GateRescueProbability;
     const hotProbability = this.IsCurrentSpinHit ? GameSettings.ChanceUpHotOnHit : GameSettings.ChanceUpHotOnMiss;
     this.willChanceUpBeHot = this.nextDouble() < hotProbability;
@@ -517,7 +579,9 @@ export class GameEngine {
     this.IsStrongOmen = this.DecideStrongOmen();
     if (!this.IsRushActive && this.IsCurrentSpinReach && !this.isFreeSpinPlanned) {
       this.isChanceUpPushPlanned = this.nextDouble() < GameSettings.ChanceUpPushProbability;
+      this.PlanReachKind();
     }
+    this.DecidePremiumSignal();
     if (this.IsRushActive) {
       // RUSH中城門到達（reach）的轉維持原速，其餘的轉比較快
       this.SpinTotalFrames = GameSettings.Scaled(this.CurrentGateOutcome !== GateOutcome.None ? GameSettings.RushSpinFrames : GameSettings.RushQuickSpinFrames);
@@ -658,6 +722,39 @@ export class GameEngine {
     this.RaiseEffect(this.IsCurrentSpinHit ? GameEffect.PushHit : GameEffect.PushPressed);
   }
 
+  // 決定這一轉的SP Reach／角色Reach名稱（只有通常時的リーチ會有名稱），信賴度和官方資料對齊
+  // 作法和保留顏色一樣：中獎時各演出名稱有自己的出現比例，沒中獎時的出現率由信賴度反推
+  PlanReachKind() {
+    const names = GameSettings.ReachKindNames;
+    const reliabilities = GameSettings.ReachKindReliabilities;
+    const hitWeights = GameSettings.ReachKindHitWeights;
+    const hitProbability = GameSettings.NormalHitProbability;
+    const roll = this.nextDouble();
+    let cumulative = 0;
+    for (let i = 0; i < names.length; i++) {
+      const weight = this.IsCurrentSpinHit
+        ? hitWeights[i]
+        : hitProbability * hitWeights[i] * (1.0 - reliabilities[i]) / ((1.0 - hitProbability) * reliabilities[i]);
+      cumulative += weight;
+      if (roll < cumulative) { this.ReachKindName = names[i]; return; }
+    }
+  }
+
+  // 決定這一轉要不要顯示プレミアム演出（最強信號）：出現時對應的結果一定已經確定，不會騙人
+  DecidePremiumSignal() {
+    if (this.IsLuckyTrigger) {
+      if (this.nextDouble() < GameSettings.PremiumRainbowLogoProbability) this.CurrentPremiumSignal = PremiumSignalKind.KeijiAlign;
+    } else if (this.IsCurrentSpinBurstHit) {
+      if (this.nextDouble() < GameSettings.PremiumScreenBlackoutProbability) this.CurrentPremiumSignal = PremiumSignalKind.ScreenBlackout;
+    } else if (this.Mode === GameMode.SenMode && this.IsCurrentSpinHit && this.willBreakToDaiSen) {
+      if (this.nextDouble() < GameSettings.PremiumMatsukazeProbability) this.CurrentPremiumSignal = PremiumSignalKind.MatsukazeAppear;
+    } else if (this.IsRushActive && this.IsCurrentSpinHit) {
+      if (this.nextDouble() < GameSettings.PremiumKiseruMaxProbability) this.CurrentPremiumSignal = PremiumSignalKind.KiseruMax;
+    } else if (this.IsCurrentSpinHit) {
+      if (this.nextDouble() < GameSettings.PremiumRainbowLogoProbability) this.CurrentPremiumSignal = PremiumSignalKind.RainbowLogo;
+    }
+  }
+
   // 強期待度電子音預告：中獎時固定機率出現，沒中獎時的機率由目標期待度反推
   DecideStrongOmen() {
     if (this.IsCurrentSpinHit) return this.nextDouble() < GameSettings.StrongOmenOnHit;
@@ -676,8 +773,29 @@ export class GameEngine {
       this.IsCurrentSpinReach = true;
       return;
     }
-    const burstProbability = this.Mode === GameMode.Normal ? GameSettings.BurstEntryProbability : GameSettings.BurstFromRushProbability;
-    this.IsCurrentSpinBurstHit = this.nextDouble() < burstProbability;
+    // LT：圖柄直接揃い（七七七），不用再經過一般判定或變換演出
+    if (this.IsLuckyTrigger) {
+      this.IsCurrentSpinBurstHit = true;
+      this.SetAllFigures(sevenIndex);
+      this.IsCurrentSpinReach = true;
+      return;
+    }
+    if (this.Mode === GameMode.Normal) {
+      // 只有七七七才是最大的傾奇御免BONUS；其餘中獎都只是普通的御免BONUS
+      this.IsCurrentSpinBurstHit = this.nextDouble() < GameSettings.BurstEntryProbability;
+    } else {
+      // 戰モード、大戰モード：傾奇者充能累積越多，直接升格傾奇BURST的機率越高，充滿保證升格
+      this.KabukiCharge = Math.min(GameSettings.KabukiChargeMax, this.KabukiCharge + this.nextInt(GameSettings.KabukiChargeGainMin, GameSettings.KabukiChargeGainMax + 1));
+      const chargeRatio = this.KabukiCharge / GameSettings.KabukiChargeMax;
+      let burstFromRushProbability = GameSettings.KabukiChargeBaseProbability + chargeRatio * (GameSettings.KabukiChargeMaxProbability - GameSettings.KabukiChargeBaseProbability);
+      if (this.KabukiCharge >= GameSettings.KabukiChargeMax) burstFromRushProbability = 1.0;
+      this.IsCurrentSpinBurstHit = this.nextDouble() < burstFromRushProbability;
+      if (this.IsCurrentSpinBurstHit) this.KabukiCharge = 0;
+      if (!this.IsCurrentSpinBurstHit && this.Mode === GameMode.SenMode) {
+        // 戰モード大當り時，順便先抽好這次會不會突破到大戰モード（給プレミアム演出用，結果和DecideNextMode保持一致）
+        this.willBreakToDaiSen = this.nextDouble() < GameSettings.DaiSenBreakProbability;
+      }
+    }
     if (this.IsCurrentSpinBurstHit && this.nextDouble() < GameSettings.BurstDirectDisplayProbability) {
       this.SetAllFigures(sevenIndex);
     } else {
@@ -796,6 +914,7 @@ export class GameEngine {
   // 開始大當り，並先決定結束後會進入哪個狀態
   StartHit() {
     this.TotalHitCount++;
+    this.HitScore = 0;
     this.SpinsSinceLastHit = 0;
     this.hitOriginMode = this.Mode;
     this.nextMode = this.DecideNextMode();
@@ -820,7 +939,7 @@ export class GameEngine {
       case GameMode.Normal:
         return this.nextDouble() < GameSettings.SenEntryProbability ? GameMode.SenMode : GameMode.Normal;
       case GameMode.SenMode:
-        return this.nextDouble() < GameSettings.DaiSenBreakProbability ? GameMode.DaiSenMode : GameMode.SenMode;
+        return this.willBreakToDaiSen ? GameMode.DaiSenMode : GameMode.SenMode;
       default:
         return GameMode.DaiSenMode;
     }
@@ -829,6 +948,8 @@ export class GameEngine {
   BeginRound() {
     this.CurrentRound++;
     this.AttackerCount = 0;
+    this.balllessFillCounter = 0;
+    this.balllessPauseFramesRemaining = 0;
     this.ChangePhase(GamePhase.RoundOpen);
     if (this.IsThemeChoiceOpen) {
       this.RaiseMessage('請選擇RUSH演出（傾奇RUSH 或 一騎驅Mode）');
