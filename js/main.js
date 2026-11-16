@@ -522,7 +522,7 @@ function restoreSettings() {
   if (typeof s.volume === 'number') { $('musicVolume').value = s.volume; music.volumePercent = s.volume; }
   if (typeof s.speed === 'string') { $('speedSelect').value = s.speed; GameSettings.SpinTimeScale = Number(s.speed) || 1; }
   if (typeof s.power === 'number') $('power').value = s.power;
-  if ([100, 500, 1000].includes(s.coin)) {
+  if ([100, 500, 1000, 10000].includes(s.coin)) {
     coinValue = s.coin;
     for (const c of document.querySelectorAll('.chip')) {
       const on = Number(c.dataset.coin) === coinValue;
