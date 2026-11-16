@@ -1,5 +1,6 @@
 import { GameSettings } from './settings.js';
-import { GameEngine, GameMode, GameEffect, PushPromptKind, RushTheme } from './engine.js';
+import { GameEngine, GameMode, GamePhase, GameEffect, PushPromptKind, RushTheme } from './engine.js';
+import { BalllessAccount, BalllessRatio } from './ballless.js';
 import { BoardPhysics, TargetKind } from './physics.js';
 import { BoardView } from './boardview.js';
 import { ScreenView } from './screen.js';
@@ -33,6 +34,10 @@ let shakeFramesRemaining = 0;
 let shakeStrength = 0;
 let displayFrame = 0;
 let shakeEnabled = true;
+// 無珠模式：保轉與得分（餘額仍用 cardBalanceYen）、運轉中（開始／暫停）
+const account = new BalllessAccount();
+let balllessRunning = false;
+let balllessFeedFrames = 0;
 let started = false; // 按下「開始遊戲」之前不跑遊戲迴圈，避免背景白白耗電
 
 // ---- 小工具 ----
@@ -72,6 +77,7 @@ function saveSettings() {
 
 // ---- 事件接線 ----
 engine.onMessage = appendLog;
+engine.onScore = (balls) => { account.Score += balls; };
 engine.onEffect = onEffect;
 physics.onPayout = (n) => { trayBallCount += n; };
 physics.onBallReturned = () => { trayBallCount++; };
@@ -135,6 +141,7 @@ function rentBalls() {
 // 退卡：退還卡片餘額，持球換算成現金，機台狀態保留給下一位
 function returnCard() {
   if (engine.IsHitInProgress) { showModal('退卡', '大當り中無法退卡，請先打完。'); return; }
+  if (engine.IsBalllessMode) { returnCardBallless(); return; }
   if (cardBalanceYen === 0 && trayBallCount === 0 && physics.ActiveBallCount === 0) { showModal('退卡', '卡片內沒有餘額，也沒有持球。'); return; }
   setAutoFire(false);
   const ballCashYen = trayBallCount * GameSettings.YenPerBall;
@@ -151,9 +158,22 @@ function returnCard() {
 }
 function setAutoFire(on) {
   autoFire = on;
+  refreshRunButton();
+}
+// 同一顆按鈕：有珠是「自動發射」，無珠是「開始／暫停」
+function refreshRunButton() {
   const b = $('autoButton');
-  b.setAttribute('aria-pressed', String(on));
-  b.textContent = `自動發射　${on ? '開' : '關'}`;
+  if (engine.IsBalllessMode) {
+    b.setAttribute('aria-pressed', String(balllessRunning));
+    b.textContent = balllessRunning ? '運轉中｜暫停' : '已暫停｜開始';
+  } else {
+    b.setAttribute('aria-pressed', String(autoFire));
+    b.textContent = `自動發射　${autoFire ? '開' : '關'}`;
+  }
+}
+function toggleRun() {
+  if (engine.IsBalllessMode) setBalllessRunning(!balllessRunning);
+  else setAutoFire(!autoFire);
 }
 // 自動發射：依間隔從持球扣一顆打出去
 function handleAutoFire() {
@@ -165,6 +185,130 @@ function handleAutoFire() {
   physics.LaunchBall(Number($('power').value));
   framesSinceLaunch = 0;
 }
+// ---- 無珠模式 ----
+function currentModeId() {
+  if (!engine.IsBalllessMode) return 'ball';
+  return account.IsOneToOne ? '1:1' : '1:2';
+}
+// 上保轉：把錢換成轉數（每次 BalllessStepYen 円）
+function upSpins() {
+  if (cardBalanceYen < GameSettings.BalllessStepYen) { appendLog(`餘額不足，上保轉需要 ${GameSettings.BalllessStepYen} 円，請先投幣（開分）`); return; }
+  cardBalanceYen -= GameSettings.BalllessStepYen;
+  account.Spins += account.SpinsPerStep;
+  appendLog(`上保轉：${GameSettings.BalllessStepYen} 円 → ${account.SpinsPerStep} 轉（保轉共 ${account.Spins.toLocaleString('en-US')} 轉）`);
+}
+// 下保轉：把剩下的轉數換回金額（四捨五入）
+function downSpins() {
+  if (account.Spins <= 0) { appendLog('沒有保轉可以下'); return; }
+  const spins = account.Spins;
+  const amount = account.SpinsToYen(spins);
+  cardBalanceYen += amount;
+  account.Spins = 0;
+  appendLog(`下保轉：${spins.toLocaleString('en-US')} 轉 → ${yen(amount)}（四捨五入）`);
+}
+// 得分下移：把爆分累積的得分（珠）換成餘額
+function scoreDown() {
+  if (account.Score <= 0) { appendLog('沒有得分可以下移'); return; }
+  const score = account.Score;
+  const amount = account.ScoreToYen(score);
+  cardBalanceYen += amount;
+  account.Score = 0;
+  appendLog(`得分下移：${score.toLocaleString('en-US')} 珠 → ${yen(amount)}（${account.RatioText}）`);
+}
+// 開始／暫停
+function setBalllessRunning(on) {
+  if (on && engine.Mode === GameMode.Normal && account.Spins <= 0 && engine.ReserveCount === 0 && !engine.IsHitInProgress) {
+    appendLog('沒有保轉，請先投幣（開分）再按「上保轉」');
+    on = false;
+  }
+  balllessRunning = on;
+  balllessFeedFrames = 0;
+  refreshRunButton();
+}
+// 運轉中時，依間隔自動補保留（等於珠子進了始動口）：通常時每個保留消耗1轉保轉，RUSH中免費
+function handleBalllessFeed() {
+  engine.IsSpinStartBlocked = !balllessRunning;
+  if (!balllessRunning || engine.IsHitInProgress) { balllessFeedFrames = 0; return; }
+  const consumesSpin = engine.Mode === GameMode.Normal || GameSettings.BalllessRushConsumesSpins;
+  if (consumesSpin && account.Spins <= 0) {
+    // 保轉用完：等保留與進行中的變動跑完就自動暫停
+    if (engine.ReserveCount === 0 && engine.Phase === GamePhase.Idle) { setBalllessRunning(false); appendLog('保轉用完了，請先上保轉再按開始'); }
+    return;
+  }
+  if (engine.ReserveCount >= GameSettings.ReserveMaximum) return;
+  if (++balllessFeedFrames < GameSettings.BalllessFeedIntervalFrames) return;
+  if (engine.AddBalllessReserve()) {
+    if (consumesSpin) account.Spins--;
+    balllessFeedFrames = 0;
+  }
+}
+// 無珠模式的退卡：餘額、保轉換算金額、得分換算金額一起退還（和有珠的退卡一樣的記法）
+function returnCardBallless() {
+  if (cardBalanceYen === 0 && account.Spins === 0 && account.Score === 0) { showModal('退卡', '卡片內沒有餘額，也沒有保轉與得分。'); return; }
+  setBalllessRunning(false);
+  const spinsYen = account.SpinsToYen(account.Spins);
+  const scoreYen = account.ScoreToYen(account.Score);
+  const returnedYen = cardBalanceYen + spinsYen + scoreYen;
+  const summary =
+    `退還餘額：${yen(cardBalanceYen)}\n保轉 ${account.Spins.toLocaleString('en-US')} 轉換金：${yen(spinsYen)}\n` +
+    `得分 ${account.Score.toLocaleString('en-US')} 珠換金：${yen(scoreYen)}（${account.RatioText}）\n合計退還：${yen(returnedYen)}\n\n` +
+    `本次累計投入 ${yen(totalInvestedYen)}，累計收回 ${yen(totalReturnedYen + returnedYen)}`;
+  totalReturnedYen += returnedYen;
+  cardBalanceYen = 0;
+  account.Spins = 0;
+  account.Score = 0;
+  appendLog(`退卡，退還 ${yen(returnedYen)}`);
+  showModal('退卡完成', summary);
+}
+// 把有珠的持球與無珠的保轉、得分，都換成金額放回餘額
+function settleAllToMoney() {
+  const ballYen = (trayBallCount + physics.ActiveBallCount) * GameSettings.YenPerBall;
+  const spinsYen = account.SpinsToYen(account.Spins);
+  const scoreYen = account.ScoreToYen(account.Score);
+  if (ballYen > 0 || spinsYen > 0 || scoreYen > 0) {
+    appendLog(`切換前先結算：持球 ${yen(ballYen)}、保轉 ${yen(spinsYen)}、得分 ${yen(scoreYen)}，換成餘額`);
+  }
+  cardBalanceYen += ballYen + spinsYen + scoreYen;
+  trayBallCount = 0;
+  physics.ClearBalls();
+  account.Spins = 0;
+  account.Score = 0;
+}
+// 切換模式：大當り中不能切換；切換前先把持球、保轉、得分都結算成餘額，帳目才不會亂
+function changePlayMode(modeId) {
+  if (modeId === currentModeId()) return;
+  if (engine.IsHitInProgress) { showModal('切換模式', '大當り中無法切換模式，請打完再切換。'); return; }
+  settleAllToMoney();
+  autoFire = false;
+  balllessRunning = false;
+  engine.IsBalllessMode = modeId !== 'ball';
+  if (engine.IsBalllessMode) account.Ratio = modeId === '1:1' ? BalllessRatio.OneToOne : BalllessRatio.OneToTwo;
+  applyModeUi();
+  appendLog(engine.IsBalllessMode ? `切換成無珠模式 ${account.RatioText}` : '切換成有珠模式');
+}
+// 依目前的模式切換畫面上的操作區
+function applyModeUi() {
+  const ballless = engine.IsBalllessMode;
+  $('strip').classList.toggle('ballless', ballless);
+  $('balllessPanel').classList.toggle('hidden', !ballless);
+  $('rentButton').classList.toggle('hidden', ballless);
+  $('coinButton').textContent = ballless ? '開分' : '投幣';
+  for (const chip of document.querySelectorAll('.mode-chip')) {
+    const on = chip.dataset.mode === currentModeId();
+    chip.classList.toggle('selected', on);
+    chip.setAttribute('aria-checked', String(on));
+  }
+  refreshRunButton();
+  updateDisplay();
+}
+function updateBalllessInfo() {
+  const scoreYen = account.ScoreToYen(account.Score);
+  setText($('balllessInfo'),
+    `得分：${account.Score.toLocaleString('en-US')} 珠（下移後約 ${yen(scoreYen)}）\n` +
+    `${account.RatioText}　1轉約 ${account.CostPerSpinYen.toFixed(1)} 円\n` +
+    `上保轉：${GameSettings.BalllessStepYen} 円 → ${account.SpinsPerStep} 轉`);
+}
+
 function updatePowerLabel() {
   const power = Number($('power').value);
   let d;
@@ -211,8 +355,17 @@ function updatePushButton() {
 }
 function updateDisplay() {
   setText($('cardBalance'), yen(cardBalanceYen));
-  setText($('trayBalls'), `${trayBallCount.toLocaleString('en-US')} 顆`);
-  const profit = totalReturnedYen + cardBalanceYen + trayBallCount * GameSettings.YenPerBall - totalInvestedYen;
+  let profit;
+  if (engine.IsBalllessMode) {
+    setText($('trayLabel'), '保轉');
+    setText($('trayBalls'), `${account.Spins.toLocaleString('en-US')} 轉`);
+    profit = totalReturnedYen + cardBalanceYen + account.SpinsToYen(account.Spins) + account.ScoreToYen(account.Score) - totalInvestedYen;
+    updateBalllessInfo();
+  } else {
+    setText($('trayLabel'), '持球');
+    setText($('trayBalls'), `${trayBallCount.toLocaleString('en-US')} 顆`);
+    profit = totalReturnedYen + cardBalanceYen + trayBallCount * GameSettings.YenPerBall - totalInvestedYen;
+  }
   setText($('statusState'), stateText());
   setText($('statusReserve'), `${engine.ReserveCount}/${GameSettings.ReserveMaximum}`);
   setText($('statusSpins'), engine.TotalSpinCount.toLocaleString('en-US'));
@@ -245,7 +398,8 @@ function render(alpha = 1) {
 
 // ---- 每一幀的遊戲迴圈（邏輯固定 60 次／秒，不受螢幕更新率影響）----
 function tick() {
-  handleAutoFire();
+  if (engine.IsBalllessMode) handleBalllessFeed();
+  else { engine.IsSpinStartBlocked = false; handleAutoFire(); }
   updateShake();
   updateBackgroundMusic();
   physics.StepPhysics();
@@ -295,7 +449,11 @@ function bindControls() {
   $('coinButton').addEventListener('click', insertCoin);
   $('rentButton').addEventListener('click', rentBalls);
   $('returnButton').addEventListener('click', returnCard);
-  $('autoButton').addEventListener('click', () => setAutoFire(!autoFire));
+  $('autoButton').addEventListener('click', toggleRun);
+  $('upSpinsButton').addEventListener('click', upSpins);
+  $('downSpinsButton').addEventListener('click', downSpins);
+  $('scoreDownButton').addEventListener('click', scoreDown);
+  for (const chip of document.querySelectorAll('.mode-chip')) chip.addEventListener('click', () => changePlayMode(chip.dataset.mode));
   $('power').addEventListener('input', () => { updatePowerLabel(); saveSettings(); });
   $('themeKabuki').addEventListener('click', () => engine.ChooseTheme(RushTheme.KabukiRush));
   $('themeIkki').addEventListener('click', () => engine.ChooseTheme(RushTheme.IkkiKake));
@@ -323,7 +481,7 @@ function bindControls() {
 
   // 電腦鍵盤：空白鍵自動發射、Enter 按 PUSH（可按住）、1／2 選擇演出
   document.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) setAutoFire(!autoFire); return; }
+    if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) toggleRun(); return; }
     if (e.code === 'Digit1' || e.code === 'Numpad1') { engine.ChooseTheme(RushTheme.KabukiRush); return; }
     if (e.code === 'Digit2' || e.code === 'Numpad2') { engine.ChooseTheme(RushTheme.IkkiKake); return; }
     if (e.code === 'Enter') {
@@ -349,7 +507,7 @@ function bindControls() {
     sound.Unlock();
     music.Init();
     $('startOverlay').classList.add('hidden');
-    appendLog('歡迎光臨！請先投幣，再按「借球」，最後打開自動發射。演出出現PUSH時按PUSH按鈕（連打時可按住）');
+    appendLog('歡迎光臨！請先投幣，再按「借球」，最後打開自動發射。演出出現PUSH時按PUSH按鈕（連打時可按住）。想玩無珠柏青哥，到下方「遊戲模式」切換');
   });
 
   // iOS 防止雙擊放大與長按選取
@@ -384,4 +542,4 @@ render();
 requestAnimationFrame(frame);
 
 // 除錯用：在瀏覽器主控台輸入 hanakei.engine 可以看到內部狀態
-window.hanakei = { engine, physics, screenView, boardView, GameSettings, g, perf, music, sound };
+window.hanakei = { engine, physics, screenView, boardView, GameSettings, g, perf, music, sound, account };

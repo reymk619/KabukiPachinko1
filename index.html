@@ -37,13 +37,18 @@
     <div id="shakeBox" class="shake-box">
       <canvas id="board" width="520" height="700"></canvas>
     </div>
-    <div class="strip">
+    <div id="strip" class="strip">
       <div class="strip-top">
-        <div class="mini"><span>持球</span><b id="trayBalls">0 顆</b></div>
+        <div class="mini"><span id="trayLabel">持球</span><b id="trayBalls">0 顆</b></div>
         <div class="mini"><span>餘額</span><b id="cardBalance">0 円</b></div>
         <button id="autoButton" class="toggle" aria-pressed="false">自動發射　關</button>
       </div>
       <button id="pushButton" class="push" disabled>PUSH（待機中）</button>
+      <div class="ballless-row">
+        <button id="upSpinsButton" class="secondary">上保轉</button>
+        <button id="downSpinsButton" class="secondary">下保轉</button>
+        <button id="scoreDownButton" class="secondary">得分下移</button>
+      </div>
       <div class="power-row">
         <label for="power" class="power-label">力度</label>
         <input id="power" type="range" min="0" max="100" value="40" step="1">
@@ -54,6 +59,21 @@
 
   <section class="deck" aria-label="操作面板">
 
+    <div class="panel">
+      <div class="panel-title">遊戲模式</div>
+      <div class="chips" id="modeChips" role="radiogroup" aria-label="遊戲模式">
+        <button class="mode-chip selected" data-mode="ball" role="radio" aria-checked="true">有珠</button>
+        <button class="mode-chip" data-mode="1:1" role="radio" aria-checked="false">無珠 1:1</button>
+        <button class="mode-chip" data-mode="1:2" role="radio" aria-checked="false">無珠 1:2</button>
+      </div>
+      <p class="hint">無珠：不發射珠子，自動運轉。1:1＝1珠4円（5000円換60轉）、1:2＝1珠2円（5000円換120轉）。切換時持球、保轉、得分會先換成餘額，大當り中不能切換。</p>
+    </div>
+
+    <div id="balllessPanel" class="panel hidden">
+      <div class="panel-title">無珠操作</div>
+      <div id="balllessInfo" class="ballless-info"></div>
+      <p class="hint">上保轉：錢→轉數（每次500円）　下保轉：轉數→錢（四捨五入）　得分下移：得分（珠）→餘額。通常時每個保留扣1轉保轉，RUSH中是免費轉。電腦版空白鍵＝開始／暫停。</p>
+    </div>
 
     <div class="panel">
       <div class="row">
